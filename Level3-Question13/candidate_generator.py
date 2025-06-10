@@ -20,7 +20,7 @@ ITEMSET_SUPPORT_SEPARATOR = "\t"
 
 # Internal constants
 IN_ITEMSET_SUPPORT_SEPARATOR = ":"
-UNEXISTED_SUPPORT = -1
+UNEXISTED_SUPPORT = -1  # Indicates a subset that doesn't exist in frequent itemsets
 
 # pylint: disable=abstract-method
 class CandidateGenerator(MRJob):
@@ -134,23 +134,21 @@ class CandidateGenerator(MRJob):
                 f"{IN_ITEMSET_SUPPORT_SEPARATOR}{support}",
             )
 
-            # Don't worry, `postfix` should only be appeared once here
+            # Each postfix appears exactly once per prefix in the input data
             postfix_support_dict[postfix] = int(support)
 
         prefix_items = string_to_itemset(prefix)
         postfix_items = sorted(postfix_support_dict.keys())
 
         if len(prefix_items) == 0 or len(postfix_items) < 2:
-            # No further (not check yet) subsets needed to be generated
-            # Empty prefix only happens when level = 1,
-            # and we don't handle that case here, but still check just for safety
+            # Cannot generate candidates: need at least 2 postfix items
+            # Empty prefix occurs only at level 1 (not handled by this job)
             return
 
-        # Edge case: if the prefix has only one item
+        # Special case: prefix has only one item (processing 2-itemsets)
         if len(prefix_items) == 1:
-            # If the prefix has only one item (i.e., original f.i.s are 2-itemsets),
-            # No prefix should be used to generate subsets
-            # (Because 2 postfix items are more than enough)
+            # For 2-itemsets, only need to check 2-item subsets (the postfix pairs)
+            # No need to include prefix in subset validation
             for postfix1, postfix2 in combinations(postfix_items, 2):
                 candidate = f"{prefix}{ITEM_SEPARATOR}{postfix1}{ITEM_SEPARATOR}{postfix2}"
                 yield (
@@ -163,8 +161,10 @@ class CandidateGenerator(MRJob):
             prefix_items, len(prefix_items) - 1
         )
         sub_prefix: tuple[str, ...]
+        # Generate all candidate itemsets and their required subsets for validation
         for postfix1, postfix2 in combinations(postfix_items, 2):
             candidate = f"{prefix}{ITEM_SEPARATOR}{postfix1}{ITEM_SEPARATOR}{postfix2}"
+            # For each candidate, generate all (k-1)-subsets that must be frequent
             for sub_prefix in sub_prefix_combinations:
                 candidate_subset = (
                     f"{itemset_to_string(sub_prefix)}{ITEM_SEPARATOR}"
@@ -194,8 +194,9 @@ class CandidateGenerator(MRJob):
         """
         Validate candidate subsets against original frequent itemsets.
 
-        Checks if required subsets exist in the frequent itemset collection
-        and propagates validation results to candidates for pruning decision.
+        This is the second reduce phase that checks if each required subset
+        actually exists in the frequent itemset collection. If a subset is
+        missing (UNEXISTED_SUPPORT), the candidate will be pruned later.
 
         Args:
             _candidate_subset (str): Subset that must be frequent.
@@ -206,14 +207,17 @@ class CandidateGenerator(MRJob):
         """
         original_subset_support: int = UNEXISTED_SUPPORT
 
-        # Don't have to use set - Each candidate should only generate each of its subsets once
+        # Use list instead of set: each candidate generates unique subsets
         candidates: list[str] = []
         for pair in candidates_with_support:
             potential_candidate, support = pair.split(IN_ITEMSET_SUPPORT_SEPARATOR)
-            if support != UNEXISTED_SUPPORT:
+            if support != str(UNEXISTED_SUPPORT):
+                # This subset was found in frequent itemsets - mark as valid
                 original_subset_support = int(support)
             if potential_candidate:
                 candidates.append(potential_candidate)
+
+        # Propagate validation result to all candidates that need this subset
         for candidate in candidates:
             yield candidate, original_subset_support
 

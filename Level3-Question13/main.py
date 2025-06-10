@@ -4,6 +4,18 @@ Main driver for the Apriori algorithm implementation using MapReduce.
 This module orchestrates the complete Apriori frequent itemset mining process
 by coordinating candidate generation and support counting phases through
 multiple MapReduce jobs until no new frequent itemsets are found.
+
+Algorithm Flow:
+1. Level 1: Count individual items using ItemsetSupportCounter
+2. Level 2: Generate 2-itemset candidates using combinatorial approach
+3. Level 3+: Use CandidateGenerator + ItemsetSupportCounter pipeline
+4. Repeat until no new frequent itemsets found or max iterations reached
+
+Key Functions:
+- frequent_itemsets_mining(): Main algorithm orchestrator
+- find_frequent_itemsets(): Execute support counting MapReduce job
+- generate_candidate_2_itemsets(): Simple combinatorial candidate generation
+- generate_candidate_itemsets(): Complex MapReduce candidate generation
 """
 import os
 import argparse
@@ -42,7 +54,7 @@ FREQUENT_ITEMSETS_DIR = "frequent-itemsets"
 CANDIDATE_ITEMSETS_DIR = "candidate-itemsets"
 PARTS_SUBDIR = "_previous_parts"
 
-def frequence_itemsets_mining(
+def frequent_itemsets_mining(
     *input_paths: str,
     min_support_count: int = 4,
     runner_mode: str = "inline",
@@ -428,7 +440,7 @@ def main() -> None:
         input_files.append(input_file)
 
     # Run frequent itemsets mining
-    frequence_itemsets_mining(
+    frequent_itemsets_mining(
         *input_files,
         min_support_count=args.min_support or DEFAULT_MIN_SUPPORT,
         runner_mode=args.runner or DEFAULT_RUNNER_MODE,

@@ -75,10 +75,13 @@ class PixelFrequencyCounter(MRJob):
 
     def mapper_final(self):
         """
-        This ensures the job always emits the pixel value 0.
+        Ensure pixel value 0 is included in the histogram even if not present in data.
+        
+        This method guarantees that pixel value 0 appears in the final output
+        with its actual count, preventing missing entries in the histogram.
         
         Yields:
-            out (tuple(Literal[0], Literal[0])):
+            tuple[int, int]: (0, 0) to ensure pixel 0 is counted
         """
         yield 0, 0
 

@@ -138,18 +138,19 @@ class ItemsetSupportCounter(MRJob):
 
         _transaction_name, itemset_str = parts
         items = string_to_itemset(itemset_str, ITEM_SEPARATOR)
+
         if self.scanning_specific_itemsets:
+            # Mode 2: Count specific itemsets provided via files (levels 2+)
             for itemset in self.interested_itemsets:
                 if items.issuperset(itemset):
-                    # Emit the itemset with a count of 1 if it is supported
+                    # Transaction contains this itemset - emit count of 1
                     yield itemset_to_string(itemset, INTERNAL_ITEMSET_SEPARATOR), 1
                 else:
-                    # Emit the itemset with a count of 0 if it is not supported
+                    # Transaction doesn't contain this itemset - emit count of 0
                     yield itemset_to_string(itemset, INTERNAL_ITEMSET_SEPARATOR), 0
-
         else:
+            # Mode 1: Count all individual items (level 1)
             for item in items:
-                # Emit each item with a count of 1
                 yield item, 1
 
     def combiner(self, key: str, values: Iterable[int]):
