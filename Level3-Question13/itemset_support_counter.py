@@ -1,8 +1,10 @@
 #!/home/khtn_22120363/midterm/.venv/bin/python
 """
-MapReduce job for counting the support of itemsets in transactions.
-This module processes transactions to count the occurrences of specified itemsets,
-including those with zero occurrences, based on a minimum support threshold.
+MapReduce job for implementing the Apriori algorithm to find frequent itemsets.
+
+This module processes transactional database stored across multiple text files
+to find frequent itemsets using the Apriori algorithm with a specified minimum
+support threshold provided via command line.
 """
 from collections.abc import Iterable
 
@@ -27,7 +29,33 @@ DEFAULT_ITEMSET_FILES = []
 # pylint: disable=abstract-method
 class ItemsetSupportCounter(MRJob):
     """
-    Count the support of itemsets in a distributed manner.
+    MapReduce job to count itemset support for the Apriori algorithm.
+
+    This job processes transaction records stored in multiple text files to count
+    the support of itemsets. Can operate in two modes: counting all individual items
+    or counting specific itemsets provided via files. Supports filtering by minimum
+    support threshold to identify frequent itemsets.
+
+    Input Format:
+        - Multiple text files containing transaction records
+        - Each line: transaction_id\titem1 item2 item3 ...
+        - Transaction ID and itemset separated by tab
+        - Items within itemset separated by spaces
+        - No duplicate items within a transaction
+
+    Output Format:
+        - Key-value pairs: (itemset, support_count)
+        - Only includes itemsets meeting minimum support threshold
+        - Tab-separated output format
+
+    Example:
+        Input:
+            "t01\thotdogs buns ketchup"
+            "t02\thotdogs buns"
+        
+        Output with min-support=2:
+            "hotdogs\t2"
+            "buns\t2"
     """
     INPUT_PROTOCOL = RawValueProtocol
     INTERNAL_PROTOCOL = JSONProtocol
@@ -35,8 +63,9 @@ class ItemsetSupportCounter(MRJob):
 
     def __init__(self, *args, **kwargs):
         """
-        Initialize the MapReduce job for counting itemset support.
-        Sets up the minimum support threshold and flags for scanning specific itemsets.
+        Initialize the MapReduce job with default configuration.
+
+        Sets up minimum support threshold and itemset scanning mode flags.
         """
         super().__init__(*args, **kwargs)
         self.minimum_support: int = DEFAULT_MIN_SUPPORT
@@ -45,11 +74,10 @@ class ItemsetSupportCounter(MRJob):
 
     def configure_args(self):
         """
-        Configure command-line arguments for the MapReduce job.
+        Configure command-line arguments for minimum support and itemset files.
 
-        This method is used to set up any additional command-line options
-        that the job might need. Currently, it does not add any specific
-        options but can be extended in the future.
+        Adds support for --min-sup argument to specify minimum support threshold
+        and --itemset-files argument to provide specific itemsets to count.
         """
         super().configure_args()
 
@@ -71,10 +99,10 @@ class ItemsetSupportCounter(MRJob):
 
     def mapper_init(self):
         """
-        Initialize the mapper by resetting the maximum pixel value.
+        Initialize mapper with configuration from command-line arguments.
 
-        This method is called before processing any input data to ensure
-        that the maximum pixel value starts at zero for each mapper instance.
+        Loads minimum support threshold and itemsets from specified files
+        if provided, setting up the scanning mode accordingly.
         """
         self.minimum_support = self.options.min_support or DEFAULT_MIN_SUPPORT
 
@@ -89,7 +117,18 @@ class ItemsetSupportCounter(MRJob):
 
     def mapper(self, key: None, value: str):
         """
-        Yield the occurrence of each item in the transaction
+        Extract itemsets from transaction records and emit support counts.
+
+        Processes each transaction line to extract items and either counts
+        specific itemsets (if provided) or counts individual items. Emits
+        count of 1 for supported itemsets and 0 for unsupported ones.
+
+        Args:
+            key (None): Input key, ignored in processing.
+            value (str): Transaction line containing transaction_id\titems.
+
+        Yields:
+            tuple: (itemset_string, count) where count is 1 or 0.
         """
         transaction = value.strip()
         parts = transaction.split(TRANSACTION_NAME_ITEMSET_SEPARATOR)
@@ -116,15 +155,25 @@ class ItemsetSupportCounter(MRJob):
     def combiner(self, key: str, values: Iterable[int]):
         """
         Local aggregation of itemset counts to reduce data transfer.
+
+        Sums up counts for each itemset within a single mapper to minimize
+        data transferred between map and reduce phases.
+
+        Args:
+            key (str): Itemset string representation.
+            values (Iterable[int]): Iterator of count values for the itemset.
+
+        Yields:
+            tuple: (itemset_string, total_count) for local aggregation.
         """
         yield key, sum(values)
 
     def reducer_init(self):
         """
-        Initialize the reducer by resetting the interested itemsets and minimum support.
+        Initialize reducer with configuration from command-line arguments.
 
-        This method is called before processing any input data to ensure
-        that the reducer starts with a clean state for each run.
+        Reloads minimum support threshold and itemsets from files for
+        consistent processing across all reducer instances.
         """
         self.minimum_support = self.options.min_support or DEFAULT_MIN_SUPPORT
 
@@ -139,7 +188,17 @@ class ItemsetSupportCounter(MRJob):
 
     def reducer(self, key: str, values: Iterable[int]):
         """
-        Aggregate the counts for each itemset or item and yield the total count.
+        Aggregate itemset counts and filter by minimum support threshold.
+
+        Sums total counts for each itemset across all mappers and outputs
+        only those meeting the minimum support requirement.
+
+        Args:
+            key (str): Itemset string representation.
+            values (Iterable[int]): Iterator of count values from all mappers.
+
+        Yields:
+            tuple: (itemset_string, total_count) for frequent itemsets only.
         """
         total_count = sum(values)
         if self.scanning_specific_itemsets:
@@ -154,25 +213,27 @@ class ItemsetSupportCounter(MRJob):
 
 def itemset_to_string(itemset: Iterable[str], separator: str = ITEM_SEPARATOR) -> str:
     """
-    Convert an itemset (set of items) to a string representation.
+    Convert an itemset to a sorted string representation.
 
     Args:
         itemset (Iterable[str]): An iterable containing items in the itemset.
+        separator (str): Separator to use between items (default: space).
 
     Returns:
-        str: A string representation of the itemset, with items separated by spaces.
+        str: String representation with items sorted and separated.
     """
     return separator.join(sorted(itemset))
 
 def string_to_itemset(itemset_str: str, separator: str = ITEM_SEPARATOR) -> frozenset[str]:
     """
-    Convert a string representation of an itemset back to a frozenset.
+    Parse a string representation back to an itemset frozenset.
 
     Args:
-        itemset_str (str): A string representation of the itemset.
+        itemset_str (str): String representation of the itemset.
+        separator (str): Separator used between items (default: space).
 
     Returns:
-        frozenset[str]: A frozenset containing the items in the itemset.
+        frozenset[str]: Frozenset containing the parsed items.
     """
     items = itemset_str.strip().split(separator)
     return frozenset(item.strip() for item in items if item.strip())
@@ -183,27 +244,28 @@ def change_itemset_separator(
         new_separator: str = ITEM_SEPARATOR
         ) -> str:
     """
-    Change the separator in a string representation of an itemset.
+    Replace separator in an itemset string representation.
 
     Args:
-        itemset_str (str): A string representation of the itemset.
-        new_separator (str): The new separator to use.
+        itemset_str (str): String representation of the itemset.
+        old_separator (str): Current separator to replace.
+        new_separator (str): New separator to use.
 
     Returns:
-        str: The itemset string with the new separator.
+        str: Itemset string with updated separator.
     """
     items = itemset_str.split(old_separator)
     return new_separator.join(item.strip() for item in items if item.strip())
 
 def load_itemsets_from_file(file_path: str) -> list[frozenset[str]]:
     """
-    Load itemsets from a file, where each line contains a serialized itemset.
+    Load itemsets from a file with one itemset per line.
 
     Args:
-        file_path (str): Path to the file containing itemsets.
+        file_path (str): Path to file containing itemsets.
 
     Returns:
-        list[frozenset[str]]: A list of frozensets representing the itemsets.
+        list[frozenset[str]]: List of frozensets representing itemsets.
     """
     itemsets = []
     try:

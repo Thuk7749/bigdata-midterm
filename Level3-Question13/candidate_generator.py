@@ -1,8 +1,10 @@
 #!/home/khtn_22120363/midterm/.venv/bin/python
 """
-MapReduce job for generating candidate itemsets based on frequent itemsets.
-This module processes frequent itemsets to generate candidate itemsets
-that may potentially become frequent in the next iteration.
+MapReduce job for generating candidate itemsets for the Apriori algorithm.
+
+This module processes frequent itemsets to generate candidate itemsets for
+the next iteration of the Apriori algorithm, implementing subset validation
+and pruning to ensure all candidates have frequent subsets.
 """
 from collections.abc import Iterable
 from typing import Any
@@ -23,7 +25,32 @@ UNEXISTED_SUPPORT = -1
 # pylint: disable=abstract-method
 class CandidateGenerator(MRJob):
     """
-    MapReduce job for generating candidate itemsets based on the already frequent itemsets.
+    MapReduce job to generate candidate itemsets for the Apriori algorithm.
+
+    This job processes frequent itemsets from the previous iteration to generate
+    candidate itemsets for the next level. Implements the candidate generation
+    phase of Apriori with subset validation and pruning to ensure all generated
+    candidates have frequent subsets, reducing computational overhead.
+
+    Input Format:
+        - Multiple text files containing frequent itemsets
+        - Each line: itemset\tsupport_count
+        - Itemset items separated by spaces
+        - Tab-separated itemset and support values
+
+    Output Format:
+        - Candidate itemsets for next iteration
+        - One itemset per line with space-separated items
+        - Only candidates with all frequent subsets included
+
+    Example:
+        Input:
+            "hotdogs buns\t3"
+            "hotdogs chips\t2"
+            "buns chips\t2"
+        
+        Output:
+            "hotdogs buns chips"  # 3-itemset candidate
     """
     INPUT_PROTOCOL = RawValueProtocol
     INTERNAL_PROTOCOL = JSONProtocol
@@ -31,10 +58,11 @@ class CandidateGenerator(MRJob):
 
     def steps(self):
         """
-        Define the steps for the MapReduce job.
+        Define the three-step MapReduce pipeline for candidate generation.
 
-        This method specifies the sequence of mapper and reducer functions
-        that will be executed during the MapReduce process.
+        Returns:
+            list[MRStep]: Sequential steps for prefix-based generation,
+                         subset validation, and candidate pruning.
         """
         return [
             MRStep(
@@ -53,7 +81,17 @@ class CandidateGenerator(MRJob):
 
     def prefix_mapper(self, _key: None, value: str):
         """
-        Yield the (prefix, postfix) pairs for each frequent itemset in the transaction.
+        Extract prefix-postfix pairs from frequent itemsets for candidate generation.
+
+        Parses frequent itemset records and splits them into prefix and postfix
+        components to enable systematic candidate generation in the reducer.
+
+        Args:
+            _key (None): Input key, ignored in processing.
+            value (str): Frequent itemset line containing itemset\tsupport.
+
+        Yields:
+            tuple: (prefix, postfix:support) for candidate generation.
         """
         line = value.strip()
         parts = [part.strip() for part in line.split(ITEMSET_SUPPORT_SEPARATOR) if part.strip()]
@@ -73,7 +111,18 @@ class CandidateGenerator(MRJob):
             self, prefix: str, postfix_support_pairs: Iterable[str]
             ):
         """
-        Reduce the (prefix, postfix) pairs to generate candidate itemsets.
+        Generate candidate itemsets and their required subsets for validation.
+
+        Combines postfix items sharing the same prefix to create candidates,
+        then generates all required subsets that must be frequent for the
+        candidate to be valid according to Apriori principle.
+
+        Args:
+            prefix (str): Common prefix shared by frequent itemsets.
+            postfix_support_pairs (Iterable[str]): Postfix items with support values.
+
+        Yields:
+            tuple: (subset, candidate:support) for subset validation phase.
         """
         postfix_support_dict: dict[str, int] = {}
         for pair in postfix_support_pairs:
@@ -84,10 +133,6 @@ class CandidateGenerator(MRJob):
                 f"{prefix}{ITEM_SEPARATOR}{postfix}",
                 f"{IN_ITEMSET_SUPPORT_SEPARATOR}{support}",
             )
-
-            # if postfix_support_dict.get(postfix) is None or \
-            #     postfix_support_dict[postfix] > int(support):
-            #     postfix_support_dict[postfix] = int(support)
 
             # Don't worry, `postfix` should only be appeared once here
             postfix_support_dict[postfix] = int(support)
@@ -132,8 +177,14 @@ class CandidateGenerator(MRJob):
 
     def identical_mapper(self, key: Any, value: Any):
         """
-        Identity mapper that yields the input key-value pair as is.
-        This is used to pass through the input data without modification.
+        Pass-through mapper for data transfer between reduce phases.
+
+        Args:
+            key (Any): Input key to pass through unchanged.
+            value (Any): Input value to pass through unchanged.
+
+        Yields:
+            tuple: (key, value) unchanged for next processing step.
         """
         yield key, value
 
@@ -141,7 +192,17 @@ class CandidateGenerator(MRJob):
         self, _candidate_subset: str, candidates_with_support: Iterable[str]
     ):
         """
-        Validate if any subset of the candidates exists in the original frequent itemsets.
+        Validate candidate subsets against original frequent itemsets.
+
+        Checks if required subsets exist in the frequent itemset collection
+        and propagates validation results to candidates for pruning decision.
+
+        Args:
+            _candidate_subset (str): Subset that must be frequent.
+            candidates_with_support (Iterable[str]): Candidates requiring this subset.
+
+        Yields:
+            tuple: (candidate, support_status) for pruning evaluation.
         """
         original_subset_support: int = UNEXISTED_SUPPORT
 
@@ -158,7 +219,17 @@ class CandidateGenerator(MRJob):
 
     def candidate_pruning_reducer(self, candidate: str, supports: Iterable[int]):
         """
-        Prune candidates.
+        Prune candidates with non-frequent subsets according to Apriori principle.
+
+        Filters out candidates that have any subset missing from frequent
+        itemsets, ensuring only valid candidates proceed to support counting.
+
+        Args:
+            candidate (str): Candidate itemset to evaluate.
+            supports (Iterable[int]): Support status for required subsets.
+
+        Yields:
+            tuple: (None, candidate) for candidates passing all subset checks.
         """
         supports_list = list(supports)
         is_pruned = len(supports_list) == 0 or any(
@@ -169,44 +240,41 @@ class CandidateGenerator(MRJob):
 
 def itemset_to_string(itemset: Iterable[str], separator: str = ITEM_SEPARATOR) -> str:
     """
-    Convert an itemset (set of items) to a string representation.
+    Convert an itemset to a sorted string representation.
 
     Args:
         itemset (Iterable[str]): An iterable containing items in the itemset.
+        separator (str): Separator to use between items (default: space).
 
     Returns:
-        str: A string representation of the itemset, with items separated by spaces.
+        str: String representation with items sorted and separated.
     """
     return separator.join(sorted(itemset))
 
 def string_to_itemset(itemset_str: str, separator: str = ITEM_SEPARATOR) -> frozenset[str]:
     """
-    Convert a string representation of an itemset back to a frozenset.
+    Parse a string representation back to an itemset frozenset.
 
     Args:
-        itemset_str (str): A string representation of the itemset.
+        itemset_str (str): String representation of the itemset.
+        separator (str): Separator used between items (default: space).
 
     Returns:
-        frozenset[str]: A frozenset containing the items in the itemset.
+        frozenset[str]: Frozenset containing the parsed items.
     """
     items = itemset_str.strip().split(separator)
     return frozenset(item.strip() for item in items if item.strip())
 
 def reorder_items(itemset_str: str, separator: str = ITEM_SEPARATOR) -> str:
     """
-    Reorder items in an itemset string to ensure consistent ordering.
-
-    This function sorts the items in the itemset string and returns the reordered string.
-    If `reporting_count` is True, it also returns the count of items in the itemset.
+    Sort items in an itemset string for consistent ordering.
 
     Args:
-        itemset_str (str): A string representation of the itemset.
-        reporting_count (bool): Whether to return the count of items in the itemset.
+        itemset_str (str): String representation of the itemset.
+        separator (str): Separator used between items (default: space).
 
     Returns:
-        out (str | tuple[str, int]):
-            A string with items sorted and separated by ITEM_SEPERATOR,
-            or a tuple containing the sorted string and the count of items.
+        str: Itemset string with items sorted alphabetically.
     """
     items = itemset_str.strip().split(separator)
     return ITEM_SEPARATOR.join(sorted(items))
@@ -215,15 +283,18 @@ def split_ordered_itemset(
         itemset_str, postfix_size: int, item_separator: str = ITEM_SEPARATOR
         ) -> tuple[str, str]:
     """
-    Split an itemset string into a prefix and postfix based on the first group size.
-    Assumes the itemset is already in a consistent order.
+    Split an ordered itemset into prefix and postfix components.
 
     Args:
-        itemset_str (str): A string representation of the itemset.
-        first_group_size (int): The size of the first group to extract as prefix.
+        itemset_str (str): String representation of the ordered itemset.
+        postfix_size (int): Number of items to include in postfix.
+        item_separator (str): Separator used between items (default: space).
 
     Returns:
-        tuple[str, str]: A tuple containing the prefix and postfix itemsets.
+        tuple[str,str]: Prefix and postfix itemset strings.
+
+    Raises:
+        ValueError: If postfix_size is negative.
     """
     if postfix_size < 0:
         raise ValueError("first_group_size must be non-negative")

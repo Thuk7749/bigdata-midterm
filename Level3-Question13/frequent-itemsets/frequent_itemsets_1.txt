@@ -1,7 +1,0 @@
-apples	21
-bread	37
-butter	35
-cheese	35
-eggs	37
-milk	37
-oranges	13

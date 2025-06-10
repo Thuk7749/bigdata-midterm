@@ -1,5 +1,9 @@
 """
-Call MRJob using python code
+Main driver for the Apriori algorithm implementation using MapReduce.
+
+This module orchestrates the complete Apriori frequent itemset mining process
+by coordinating candidate generation and support counting phases through
+multiple MapReduce jobs until no new frequent itemsets are found.
 """
 import os
 import argparse
@@ -45,8 +49,17 @@ def frequence_itemsets_mining(
     max_iterations: int = 100,
 ) -> None:
     """
-    Main function to run the MapReduce job for finding frequent itemsets.
-    This function initializes the directories and runs the job.
+    Execute the complete Apriori algorithm for frequent itemset mining.
+
+    Orchestrates the iterative process of finding frequent itemsets and
+    generating candidates until no new frequent itemsets are discovered
+    or maximum iterations are reached.
+
+    Args:
+        *input_paths (str): Paths to transaction files for processing.
+        min_support_count (int): Minimum support threshold (default: 4).
+        runner_mode (str): MapReduce execution mode (default: "inline").
+        max_iterations (int): Maximum algorithm iterations (default: 100).
     """
     fi_file_path: Callable[[int], str] = lambda level: (
         os.path.join(
@@ -101,7 +114,21 @@ def find_frequent_itemsets(
         min_support_count: int = 2,
         runner_mode: str = "inline",
         ) -> None:
-    """"main"""
+    """
+    Find frequent itemsets at a specific level using MapReduce.
+
+    Executes the ItemsetSupportCounter MapReduce job to identify itemsets
+    meeting the minimum support threshold at the specified level.
+
+    Args:
+        *input_paths (str): Transaction file paths for processing.
+        level (int): Current itemset size level (default: 1).
+        min_support_count (int): Minimum support threshold (default: 2).
+        runner_mode (str): MapReduce execution mode (default: "inline").
+
+    Raises:
+        ValueError: If input validation fails for paths, level, or support count.
+    """
     if len(input_paths) == 0:
         raise ValueError("At least one input path must be provided.")
     if level < 1:
@@ -144,7 +171,20 @@ def generate_candidate_2_itemsets(
     *input_paths: str,
     item_separator: str = " ",
 ) -> None:
-    """Generate candidate 2-itemsets from the input paths."""
+    """
+    Generate 2-itemset candidates from frequent 1-itemsets.
+
+    Creates all possible 2-item combinations from frequent 1-itemsets
+    using a combinatorial approach, avoiding MapReduce overhead for
+    this simple case.
+
+    Args:
+        *input_paths (str): Paths to frequent 1-itemset files.
+        item_separator (str): Separator between items (default: space).
+
+    Raises:
+        ValueError: If no input paths provided or inconsistent support values found.
+    """
     if len(input_paths) == 0:
         raise ValueError("At least one input path must be provided.")
 
@@ -185,7 +225,21 @@ def generate_candidate_itemsets(
     level: int = 3,
     runner_mode: str = "inline",
 ) -> None:
-    """Generate candidate itemsets for the next level."""
+    """
+    Generate candidate itemsets for levels 3 and above using MapReduce.
+
+    Executes the CandidateGenerator MapReduce job to create candidate
+    itemsets with proper subset validation and pruning according to
+    the Apriori principle.
+
+    Args:
+        *input_paths (str): Paths to frequent itemset files from previous level.
+        level (int): Target itemset size level (default: 3).
+        runner_mode (str): MapReduce execution mode (default: "inline").
+
+    Raises:
+        ValueError: If no input paths provided or level is less than 3.
+    """
     if len(input_paths) == 0:
         raise ValueError("At least one input path must be provided.")
     if level < 3:
@@ -215,11 +269,10 @@ def generate_candidate_itemsets(
 
 def _refresh_directory(directory: str) -> None:
     """
-    Reset the specified directory by removing all files and subdirectories,
-    or create it if it does not exist.
+    Reset directory by removing all contents or create if non-existent.
 
     Args:
-        directory (str): The directory to reset.
+        directory (str): Directory path to reset or create.
     """
     if os.path.exists(directory):
         for item in os.listdir(directory):
@@ -235,11 +288,12 @@ def combine_parts(
     parts_dir: str, output_file: str, output_dir: str | None = None
 ) -> None:
     """
-    Combine parts of a MapReduce job output into a single file.
+    Combine MapReduce output parts into a single consolidated file.
+
     Args:
-        input_dir (str): Directory containing the parts to combine.
-        output_file (str): Name of the output file to create.
-        output_dir (str, optional): Directory to save the combined file. Defaults to None.
+        parts_dir (str): Directory containing MapReduce output parts.
+        output_file (str): Name of the consolidated output file.
+        output_dir (str, optional): Output directory (defaults to parts_dir).
     """
     if output_dir is None:
         output_dir = parts_dir
@@ -254,7 +308,11 @@ def combine_parts(
 
 def _process_part_file(part_path: str, outfile: TextIO) -> None:
     """
-    Process a single part file and write non-empty lines to output.
+    Process individual MapReduce part file and write non-empty lines to output.
+
+    Args:
+        part_path (str): Path to the part file to process.
+        outfile (TextIO): Output file handle for writing consolidated results.
     """
     with open(part_path, "r", encoding="utf-8") as infile:
         for line in infile:
@@ -267,14 +325,14 @@ def extract_itemsets_and_supports(
     separator: str = "\t",
 ) -> list[tuple[str, int]]:
     """
-    Read an itemset and its support from a buffer.
+    Parse itemsets and support counts from input buffer.
 
     Args:
-        buffer (TextIO): The input buffer containing itemset and support.
-        separator (str): The separator used to split itemset and support.
+        buffer (TextIO): Input buffer containing itemset-support pairs.
+        separator (str): Separator between itemset and support (default: tab).
 
     Returns:
-        tuple[str, int]: A tuple containing the itemset as a string and its support count.
+        list[tuple[str, int]]: List of (itemset_string, support_count) tuples.
     """
     results = []
     for line in buffer:
@@ -291,19 +349,22 @@ def extract_itemsets_and_supports(
 
 def is_empty_file(file_path: str) -> bool:
     """
-    Check if a file is empty.
+    Check if a file exists and is empty.
 
     Args:
-        file_path (str): The path to the file to check.
+        file_path (str): Path to the file to check.
 
     Returns:
-        bool: True if the file is empty, False otherwise.
+        bool: True if file exists and is empty, False otherwise.
     """
     return os.path.exists(file_path) and os.path.getsize(file_path) == 0
 
 def main() -> None:
     """
-    Parse command line arguments and run frequent itemsets mining.
+    Parse command-line arguments and execute frequent itemset mining.
+
+    Handles argument validation, directory cleanup, and orchestrates
+    the complete Apriori algorithm execution with user-specified parameters.
     """
     parser = argparse.ArgumentParser(
         description="Run MapReduce job for finding frequent itemsets"

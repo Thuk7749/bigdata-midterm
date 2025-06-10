@@ -1,3 +1,6 @@
 __pycache__/
 _previous_parts/
 .venv/
+
+candidate-itemsets/
+frequent-itemsets/
