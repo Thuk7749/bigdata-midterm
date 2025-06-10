@@ -39,6 +39,8 @@ MIN_SUPPORT_CMD_ARG = "--min-support"
 RUNNER_CMD_ARG = "--runner"
 MAX_ITERATIONS_CMD_ARG = "--max-iterations"
 CLEAN_CMD_ARG = "--clean"
+HADOOP_ARGS_CMD_ARG = "--hadoop-args"
+OWNER_CMD_ARG = "--owner"
 
 # Default values for command-line arguments
 DEFAULT_MIN_SUPPORT = 4
@@ -52,13 +54,15 @@ FILE_NAME_SEPARATOR = "_"
 FILE_EXTENSION = ".txt"
 FREQUENT_ITEMSETS_DIR = "frequent-itemsets"
 CANDIDATE_ITEMSETS_DIR = "candidate-itemsets"
-PARTS_SUBDIR = "_previous_parts"
+PARTS_SUBDIR = "_parts"
 
 def frequent_itemsets_mining(
     *input_paths: str,
     min_support_count: int = 4,
     runner_mode: str = "inline",
     max_iterations: int = 100,
+    hadoop_args: list[str] | None = None,
+    owner: str | None = None,
 ) -> None:
     """
     Execute the complete Apriori algorithm for frequent itemset mining.
@@ -72,6 +76,8 @@ def frequent_itemsets_mining(
         min_support_count (int): Minimum support threshold (default: 4).
         runner_mode (str): MapReduce execution mode (default: "inline").
         max_iterations (int): Maximum algorithm iterations (default: 100).
+        hadoop_args (list[str], optional): Additional Hadoop arguments to pass to MRJob.
+        owner (str, optional): Owner for Hadoop jobs when using hadoop runner.
     """
     fi_file_path: Callable[[int], str] = lambda level: (
         os.path.join(
@@ -94,6 +100,8 @@ def frequent_itemsets_mining(
             level=current_level,
             min_support_count=min_support_count,
             runner_mode=runner_mode,
+            hadoop_args=hadoop_args,
+            owner=owner,
         )
         if is_empty_file(fi_file_path(current_level)):
             print(f"No frequent itemsets found at level {current_level}. Stopping.")
@@ -107,6 +115,8 @@ def frequent_itemsets_mining(
                 fi_file_path(current_level),
                 level=current_level + 1,
                 runner_mode=runner_mode,
+                hadoop_args=hadoop_args,
+                owner=owner,
             )
         if is_empty_file(ci_file_path(current_level + 1)):
             print(f"No candidate itemsets found for level {current_level + 1}. Stopping.")
@@ -125,6 +135,8 @@ def find_frequent_itemsets(
         level: int = 1,
         min_support_count: int = 2,
         runner_mode: str = "inline",
+        hadoop_args: list[str] | None = None,
+        owner: str | None = None,
         ) -> None:
     """
     Find frequent itemsets at a specific level using MapReduce.
@@ -137,6 +149,8 @@ def find_frequent_itemsets(
         level (int): Current itemset size level (default: 1).
         min_support_count (int): Minimum support threshold (default: 2).
         runner_mode (str): MapReduce execution mode (default: "inline").
+        hadoop_args (list[str], optional): Additional Hadoop arguments to pass to MRJob.
+        owner (str, optional): Owner for Hadoop jobs when using hadoop runner.
 
     Raises:
         ValueError: If input validation fails for paths, level, or support count.
@@ -148,13 +162,23 @@ def find_frequent_itemsets(
     if min_support_count < 1:
         raise ValueError("Minimum support count must be at least 1.")
 
-    parts_dir = os.path.join(FREQUENT_ITEMSETS_DIR, PARTS_SUBDIR)
-    _refresh_directory(parts_dir)
+    parts_dir = os.path.join(FREQUENT_ITEMSETS_DIR, f"{PARTS_SUBDIR}_{level}")
+    _refresh_directory(
+        parts_dir,
+        guaranteed_no_existence= runner_mode == "hadoop",
+        )
+
+    # Format output directory path based on runner mode
+    if runner_mode == "hadoop":
+        output_dir = f"file://{os.path.abspath(parts_dir)}"
+    else:
+        output_dir = parts_dir
 
     arguments = list(input_paths)  # Add input paths first
     arguments.extend([
         "-r", runner_mode,
-        "--output-dir", parts_dir,
+        "--output-dir", output_dir,
+        "--cat-output",
         MIN_SUPPORT_ARG_NAME, str(min_support_count),
     ])
 
@@ -168,6 +192,18 @@ def find_frequent_itemsets(
         arguments.extend([
             ITEMSET_FILES_ARG_NAME, candidate_file_path,
         ])
+
+    # Add hadoop-specific arguments if provided and using hadoop runner
+    if hadoop_args and runner_mode == "hadoop":
+        # Convert KEY=VALUE pairs to -D KEY=VALUE format
+        hadoop_formatted_args = []
+        for arg in hadoop_args:
+            hadoop_formatted_args.extend(["-D", arg])
+        arguments.extend(hadoop_formatted_args)
+
+    # Add owner argument if provided and using hadoop runner
+    if owner and runner_mode == "hadoop":
+        arguments.extend(["--owner", owner])
 
     job = ItemsetSupportCounter(args = arguments)
 
@@ -236,6 +272,8 @@ def generate_candidate_itemsets(
     *input_paths: str,
     level: int = 3,
     runner_mode: str = "inline",
+    hadoop_args: list[str] | None = None,
+    owner: str | None = None,
 ) -> None:
     """
     Generate candidate itemsets for levels 3 and above using MapReduce.
@@ -248,6 +286,8 @@ def generate_candidate_itemsets(
         *input_paths (str): Paths to frequent itemset files from previous level.
         level (int): Target itemset size level (default: 3).
         runner_mode (str): MapReduce execution mode (default: "inline").
+        hadoop_args (list[str], optional): Additional Hadoop arguments to pass to MRJob.
+        owner (str, optional): Owner for Hadoop jobs when using hadoop runner.
 
     Raises:
         ValueError: If no input paths provided or level is less than 3.
@@ -257,14 +297,36 @@ def generate_candidate_itemsets(
     if level < 3:
         raise ValueError("Level must be at least 3 for candidate itemsets generation.")
 
-    parts_dir = os.path.join(CANDIDATE_ITEMSETS_DIR, PARTS_SUBDIR)
-    _refresh_directory(parts_dir)
+    parts_dir = os.path.join(CANDIDATE_ITEMSETS_DIR, f"{PARTS_SUBDIR}_{level}")
+    _refresh_directory(
+        parts_dir,
+        guaranteed_no_existence= runner_mode == "hadoop",
+        )
+
+    # Format output directory path based on runner mode
+    if runner_mode == "hadoop":
+        output_dir = f"file://{os.path.abspath(parts_dir)}"
+    else:
+        output_dir = parts_dir
 
     arguments = list(input_paths)  # Add input paths first
     arguments.extend([
         "-r", runner_mode,
-        "--output-dir", parts_dir,
+        "--cat-output",
+        "--output-dir", output_dir,
     ])
+
+    # Add hadoop-specific arguments if provided and using hadoop runner
+    if hadoop_args and runner_mode == "hadoop":
+        # Convert KEY=VALUE pairs to -D KEY=VALUE format
+        hadoop_formatted_args = []
+        for arg in hadoop_args:
+            hadoop_formatted_args.extend(["-D", arg])
+        arguments.extend(hadoop_formatted_args)
+
+    # Add owner argument if provided and using hadoop runner
+    if owner and runner_mode == "hadoop":
+        arguments.extend(["--owner", owner])
 
     job = CandidateGenerator(args = arguments)
 
@@ -279,12 +341,14 @@ def generate_candidate_itemsets(
 # Utility functions for file and directory management
 # -------------------------------------------------------------------------------------------------
 
-def _refresh_directory(directory: str) -> None:
+def _refresh_directory(directory: str, guaranteed_no_existence: bool = False) -> None:
     """
     Reset directory by removing all contents or create if non-existent.
 
     Args:
         directory (str): Directory path to reset or create.
+        guaranteed_no_existence (bool):
+            If True, ensure directory does not exist after cleanup.
     """
     if os.path.exists(directory):
         for item in os.listdir(directory):
@@ -293,7 +357,9 @@ def _refresh_directory(directory: str) -> None:
                 os.remove(item_path)
             elif os.path.isdir(item_path):
                 os.rmdir(item_path)
-    else:
+        if guaranteed_no_existence:
+            os.rmdir(directory)
+    elif not guaranteed_no_existence:
         os.makedirs(directory)
 
 def combine_parts(
@@ -314,6 +380,9 @@ def combine_parts(
 
     with open(output_path, "w", encoding="utf-8") as outfile:
         for part in sorted(os.listdir(parts_dir)):  # Sort for consistent order
+            # Skip Hadoop checksum files (.crc files) and other non-data files
+            if part.startswith('.') or part.startswith('_'):
+                continue
             part_path = os.path.join(parts_dir, part)
             if os.path.isfile(part_path):
                 _process_part_file(part_path, outfile)
@@ -415,18 +484,41 @@ def main() -> None:
         help="Clean output directories before running"
     )
 
+    parser.add_argument(
+        HADOOP_ARGS_CMD_ARG,
+        nargs="*",
+        help=(
+            "Additional Hadoop arguments as KEY=VALUE pairs when using hadoop runner "
+            "(e.g., hadoop.job.ugi=username mapreduce.job.reduces=2)"
+        )
+    )
+
+    parser.add_argument(
+        OWNER_CMD_ARG,
+        help="Owner for Hadoop jobs when using hadoop runner"
+    )
+
     args = parser.parse_args()
 
     # Clean directories if requested
     if args.clean:
         print("Cleaning output directories...")
-        # Clean parts subdirectories first
-        frequent_parts_dir = os.path.join(FREQUENT_ITEMSETS_DIR, PARTS_SUBDIR)
-        candidate_parts_dir = os.path.join(CANDIDATE_ITEMSETS_DIR, PARTS_SUBDIR)
-        if os.path.exists(frequent_parts_dir):
-            _refresh_directory(frequent_parts_dir)
-        if os.path.exists(candidate_parts_dir):
-            _refresh_directory(candidate_parts_dir)
+        def clean_level_specific_parts(base_dir: str, start_level: int) -> None:
+            """Clean all level-specific parts subdirectories for a given base directory."""
+            if os.path.exists(base_dir):
+                level = start_level
+                while True:
+                    parts_subdir = os.path.join(base_dir, f"{PARTS_SUBDIR}_{level}")
+                    if os.path.exists(parts_subdir):
+                        _refresh_directory(parts_subdir, guaranteed_no_existence=True)
+                        level += 1
+                    else:
+                        break
+
+        # Clean all level-specific parts subdirectories
+        clean_level_specific_parts(FREQUENT_ITEMSETS_DIR, 1)
+        clean_level_specific_parts(CANDIDATE_ITEMSETS_DIR, 3)
+
         # Then clean main directories
         _refresh_directory(FREQUENT_ITEMSETS_DIR)
         _refresh_directory(CANDIDATE_ITEMSETS_DIR)
@@ -445,6 +537,8 @@ def main() -> None:
         min_support_count=args.min_support or DEFAULT_MIN_SUPPORT,
         runner_mode=args.runner or DEFAULT_RUNNER_MODE,
         max_iterations=args.max_iterations or DEFAULT_MAX_ITERATIONS,
+        hadoop_args=args.hadoop_args,
+        owner=args.owner,
     )
 
 if __name__ == "__main__":
