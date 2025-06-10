@@ -1,0 +1,15 @@
+apples bread	12
+apples butter	12
+apples cheese	12
+apples eggs	12
+apples milk	12
+bread butter	21
+bread cheese	21
+bread eggs	22
+bread milk	22
+butter cheese	19
+butter eggs	21
+butter milk	21
+cheese eggs	21
+cheese milk	21
+eggs milk	22

@@ -1,0 +1,60 @@
+t01	bread milk eggs butter
+t02	bread milk eggs cheese
+t03	bread milk butter cheese
+t04	bread eggs butter cheese
+t05	milk eggs butter cheese
+t06	bread milk eggs butter cheese
+t07	bread milk eggs
+t08	bread milk butter
+t09	bread eggs butter
+t10	milk eggs butter
+t11	bread milk cheese
+t12	bread eggs cheese
+t13	milk eggs cheese
+t14	bread butter cheese
+t15	milk butter cheese
+t16	eggs butter cheese
+t17	bread milk
+t18	bread eggs
+t19	bread butter
+t20	bread cheese
+t21	milk eggs
+t22	milk butter
+t23	milk cheese
+t24	eggs butter
+t25	eggs cheese
+t26	butter cheese
+t27	bread milk eggs butter apples
+t28	bread milk eggs cheese apples
+t29	bread milk butter cheese apples
+t30	bread eggs butter cheese apples
+t31	milk eggs butter cheese apples
+t32	bread milk eggs butter cheese apples
+t33	bread milk eggs apples
+t34	bread milk butter apples
+t35	bread eggs butter apples
+t36	milk eggs butter apples
+t37	bread milk cheese apples
+t38	bread eggs cheese apples
+t39	milk eggs cheese apples
+t40	bread butter cheese apples
+t41	milk butter cheese apples
+t42	eggs butter cheese apples
+t43	bread apples
+t44	milk apples
+t45	eggs apples
+t46	butter apples
+t47	cheese apples
+t48	bread milk eggs butter oranges
+t49	bread milk eggs cheese oranges
+t50	bread milk butter cheese oranges
+t51	bread eggs butter cheese oranges
+t52	milk eggs butter cheese oranges
+t53	bread milk eggs butter cheese oranges
+t54	bread milk eggs oranges
+t55	bread milk butter oranges
+t56	bread eggs butter oranges
+t57	milk eggs butter oranges
+t58	bread milk cheese oranges
+t59	bread eggs cheese oranges
+t60	milk eggs cheese oranges

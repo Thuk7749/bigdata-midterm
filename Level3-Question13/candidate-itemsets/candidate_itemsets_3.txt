@@ -1,0 +1,10 @@
+apples bread butter
+apples bread cheese
+apples bread eggs
+apples bread milk
+apples butter cheese
+apples butter eggs
+apples butter milk
+bread butter cheese
+bread butter eggs
+bread butter milk
