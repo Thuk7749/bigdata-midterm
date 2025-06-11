@@ -1,22 +1,42 @@
 # Apriori Algorithm Implementation with MapReduce
 
-This directory contains a complete implementation of the Apriori algorithm for frequent itemset mining using MapReduce.
+This directory contains a comprehensively refactored implementation of the Apriori algorithm for frequent itemset mining using MapReduce, featuring advanced logging, state management, and debugging capabilities.
 
 ## Overview
 
-The implementation consists of three main components:
+The implementation consists of four main components with clean architectural separation:
 
-1. **`itemset_support_counter.py`** - Counts support for itemsets
-2. **`candidate_generator.py`** - Generates candidate itemsets with pruning
-3. **`main.py`** - Orchestrates the complete Apriori algorithm
+1. **`main.py`** - Orchestrates the complete Apriori algorithm with enhanced logging and debug support
+2. **`apriori_core.py`** - Core MapReduce computation functions (separated for better maintainability)
+3. **`itemset_support_counter.py`** - Counts support for itemsets using MapReduce
+4. **`candidate_generator.py`** - Generates candidate itemsets with Apriori pruning
+
+## Key Features
+
+### 🚀 **Enhanced Algorithm Architecture**
+- **AprioriState Class**: Lightweight state management for algorithm progression
+- **Step-based Execution**: Clean, modular function decomposition
+- **Comprehensive Logging**: Detailed input/output file tracking and generation strategies
+- **Error Handling**: Robust exception handling with optional debug traces
+
+### 🐛 **Advanced Debug Support**
+- **Debug Mode**: `--debug` flag for detailed error reporting and MRJob output visibility
+- **Stack Traces**: Full error context when troubleshooting issues
+- **File Tracking**: Detailed logging of input files, output files, and processing steps
+
+### 📊 **Professional Logging**
+- **Visual Hierarchy**: Consistent icon-based indicators for different message types
+- **Strategy Context**: Clear explanations of algorithm approaches used at each level
+- **Balanced Reporting**: Equal detail for both frequent itemset finding and candidate generation
+- **Progress Tracking**: Real-time feedback on algorithm progression
 
 ## Key Files
 
-- `main.py` - Main driver that coordinates the entire Apriori process
-- `itemset_support_counter.py` - MapReduce job for counting itemset support
-- `candidate_generator.py` - MapReduce job for generating candidates with subset validation
-- `trans*` - Sample transaction files for testing
-- `test_sample.txt`, `complex_test.txt` - Additional test datasets
+- **`main.py`** - Main driver with refactored step-based architecture
+- **`apriori_core.py`** - Core MapReduce computation functions
+- **`itemset_support_counter.py`** - MapReduce job for counting itemset support
+- **`candidate_generator.py`** - MapReduce job for generating candidates with subset validation
+- **`trans*`** - Sample transaction files for testing
 
 ## How to Run
 
