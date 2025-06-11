@@ -1,0 +1,34 @@
+3. Tổ chức bài nộp 
+Mỗi nhóm chỉ nộp một tập tin nén (.zip) duy nhất vào đường dẫn nộp bài được chỉ định trên Moodle. 
+Tên tập tin zip phải đặt theo tên nhóm, ví dụ: CQ00.zip, được tạo từ thư mục có cùng tên (CQ00). 
+Cấu trúc thư mục CQ00 như sau: 
+1. Tập tin readme.txt 
+Ghi rõ: 
+o Họ tên và MSSV của từng thành viên 
+o Danh sách các câu hỏi ở Mức độ 1 và Mức độ 2 mà mỗi thành viên đã thực hiện 
+2. Thư mục con cho từng thành viên, đặt tên theo MSSV 
+o Ví dụ, nhóm có 4 thành viên thì thư mục CQ00 sẽ có 4 thư mục con tương ứng với 4 MSSV. 
+3. Thư mục Level3 (dành cho câu hỏi nhóm – Câu hỏi số 13) 
+Bao gồm: 
+o Mã nguồn chương trình 
+o 03 test case 
+o Video trình bày kết quả 
+o Tập tin định danh của thành viên thực hiện chạy chương trình 
+  
+ 
+Mỗi thư mục con của sinh viên bao gồm: 
+a.   Thư mục cho mỗi câu hỏi ở Mức độ 1 
+ Tên thư mục: Level1 – Question X, trong đó X là mã số câu hỏi tương ứng. 
+ Mỗi sinh viên sẽ có 2 thư mục như vậy, tương ứng với 2 câu hỏi mức 1. 
+ Nội dung trong mỗi thư mục: 
+o Mã nguồn chương trình 
+o 03 test case (lớn hơn sample input) 
+o Video trình bày kết quả: bao gồm dữ liệu sử dụng, quá trình chạy, và kết quả đầu ra 
+o Tập tin định danh <MSSV>_verification.txt 
+b.   Thư mục cho câu hỏi ở Mức độ 2 
+ Tên thư mục: Level2 – Question Y, với Y là mã số câu hỏi tương ứng. 
+ Nội dung tương tự như thư mục cho mỗi câu hỏi ở Mức độ 1: 
+o Mã nguồn chương trình 
+o 03 test case 
+o Video trình bày kết quả 
+o Tập tin định danh <MSSV>_verification.txt 
