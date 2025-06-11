@@ -1,14 +1,14 @@
 # Test Case 1: Basic STD Call Duration Filtering
 
 ## Test Scenario
-Basic filtering of phone numbers with STD calls exceeding 60 minutes, including edge cases around the threshold.
+Basic filtering of phone numbers with STD calls exceeding 60 minutes, including edge cases around the threshold with unique calling numbers.
 
 ## Input Characteristics
 - **Files**: 3 input files (file11, file12, file13)
 - **Call Type**: All calls are STD calls (STDFlag=1)
-- **Call Duration Range**: 50-120 minutes per call
+- **Call Duration Range**: 50-80 minutes per call for boundary testing
 - **Data Size**: 20+ call records total
-- **Focus**: Threshold boundary testing (exactly 60, slightly above/below)
+- **Focus**: Threshold boundary testing with unique phone numbers (exactly 60, slightly above/below)
 
 ## Expected Behavior
 - Only phone numbers with >60 minutes total STD time appear in output
