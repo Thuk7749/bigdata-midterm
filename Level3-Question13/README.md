@@ -9,7 +9,7 @@ Frequent itemset mining implementation using MapReduce. Processes transaction fi
 - `decimal_support_converter.py` - Converts decimal support to count using MapReduce
 - `itemset_support_counter.py` - Counts itemset support using MapReduce
 - `candidate_generator.py` - Generates candidates with Apriori pruning
-- `trans01`, `trans02`, `trans03` - Sample transaction data
+- `testcase1`, `testcase2`, `testcase3` - Example transaction files for testing
 
 ## Usage
 
