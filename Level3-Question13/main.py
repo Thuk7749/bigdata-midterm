@@ -147,7 +147,7 @@ def execute_candidate_2_itemsets_generation(
         print(f"{STOP_INDICATOR} Data validation error in 2-itemset generation: {e}")
         print_debug_traceback(debug_mode)
         return False, 0
-    except Exception as e:  # pragma: no cover
+    except Exception as e:
         print(f"{STOP_INDICATOR} Unexpected error in 2-itemset generation: {e}")
         print_debug_traceback(debug_mode)
         return False, 0
@@ -194,11 +194,45 @@ def execute_candidate_itemsets_generation(
         print(f"{STOP_INDICATOR} MapReduce job failed for candidate generation: {e}")
         print_debug_traceback(debug_mode)
         return False
-    except Exception as e:  # pragma: no cover
+    except Exception as e:
         print(f"{STOP_INDICATOR} Unexpected error in candidate generation: {e}")
         print_debug_traceback(debug_mode)
         return False
 # pylint: enable=broad-exception-caught,too-many-arguments,too-many-positional-arguments
+
+class AprioriState:
+    """Lightweight state management for Apriori algorithm execution."""
+
+    def __init__(
+            self,
+            total_frequent_itemsets: int = 0,
+            current_level: int = 1,
+            current_iteration: int = 0
+            ):
+        self.total_frequent_itemsets = total_frequent_itemsets
+        self.current_level = current_level
+        self.current_iteration = current_iteration
+
+    def fi_file_path(self, level: int | None = None) -> str:
+        """Generate frequent itemsets file path for given level."""
+        level = level if level is not None else self.current_level
+        return os.path.join(
+            FREQUENT_ITEMSETS_DIR,
+            f"{FREQUENT_ITEMSETS_FILE_NAME_PREFIX}{FILE_NAME_SEPARATOR}{level}{FILE_EXTENSION}"
+        )
+
+    def ci_file_path(self, level: int | None = None) -> str:
+        """Generate candidate itemsets file path for given level."""
+        level = level if level is not None else self.current_level
+        return os.path.join(
+            CANDIDATE_ITEMSETS_DIR,
+            f"{CANDIDATE_ITEMSETS_FILE_NAME_PREFIX}{FILE_NAME_SEPARATOR}{level}{FILE_EXTENSION}"
+        )
+
+    def advance_iteration(self) -> None:
+        """Advance to next algorithm iteration."""
+        self.current_level += 1
+        self.current_iteration += 1
 
 def frequent_itemsets_mining(
     *input_paths: str,
@@ -225,135 +259,82 @@ def frequent_itemsets_mining(
         owner (str, optional): Owner for Hadoop jobs when using hadoop runner.
         debug_mode (bool): Enable detailed error reporting and MRJob output.
     """
-    # File path helper functions
-    fi_file_path: Callable[[int], str] = lambda level: (
-        os.path.join(
-            FREQUENT_ITEMSETS_DIR,
-            f"{FREQUENT_ITEMSETS_FILE_NAME_PREFIX}{FILE_NAME_SEPARATOR}{level}{FILE_EXTENSION}"
-        )
-    )
-    ci_file_path: Callable[[int], str] = lambda level: (
-        os.path.join(
-            CANDIDATE_ITEMSETS_DIR,
-            f"{CANDIDATE_ITEMSETS_FILE_NAME_PREFIX}{FILE_NAME_SEPARATOR}{level}{FILE_EXTENSION}"
-        )
-    )
+    state = AprioriState()
 
-    # Algorithm state
-    current_level: int = 1
-    current_iteration: int = 0
-    total_frequent_itemsets = 0
-
-    # Step 1: Initialize algorithm and log start
-    def _step_initialize_algorithm() -> float:
-        """Initialize algorithm logging and input file validation."""
-        algorithm_start = log_operation_start(
-            "Apriori Algorithm",
-            min_support=min_support_count,
-            runner_mode=runner_mode,
-            max_iterations=max_iterations,
-            input_files=list(input_paths)
-        )
-
-        return algorithm_start
-
-    # Step 2: Log current operation and inputs
-    def _step_log_iteration_inputs() -> None:
+    def log_iteration_inputs() -> None:
         """Log the current operation and input files."""
-        if current_level == 1:
+        if state.current_level == 1:
             print(f"\n{TASK_INDICATOR} Finding frequent 1-itemsets (individual items)")
             for i, path in enumerate(input_paths, 1):
                 log_file_info(path, f"Input transaction file {i}")
         else:
-            print(f"\n{TASK_INDICATOR} Finding frequent {current_level}-itemsets")
-            candidate_file_path = ci_file_path(current_level)
-            log_file_info(candidate_file_path, f"Input candidate {current_level}-itemsets")
+            print(f"\n{TASK_INDICATOR} Finding frequent {state.current_level}-itemsets")
+            log_file_info(state.ci_file_path(), f"Input candidate {state.current_level}-itemsets")
 
-    # Step 3: Execute frequent itemsets finding phase
-    def _step_execute_frequent_itemsets_phase() -> bool:
+    def execute_frequent_itemsets_phase() -> bool:
         """Execute frequent itemset finding with error handling."""
-        # Determine input paths for current level
-        # For level 1: use transaction files only
-        # For level 2+: use transaction files (ItemsetSupportCounter needs them to scan)
-        #               and candidate file is passed separately via ITEMSET_FILES_ARG
-        input_for_level = input_paths
-
         if not execute_frequent_itemsets_finding(
-            input_for_level,
-            current_level,
-            min_support_count,
-            runner_mode,
-            hadoop_args,
-            owner,
-            debug_mode,
+            input_paths, state.current_level, min_support_count,
+            runner_mode, hadoop_args, owner, debug_mode
         ):
             print(f"{STOP_INDICATOR} Error occurred during frequent itemset finding. Aborting.")
             return False
         return True
 
-    # Step 4: Process frequent itemsets results
-    def _step_process_frequent_itemsets_results() -> int:
+    def process_frequent_itemsets_results() -> int:
         """Combine parts and display frequent itemsets results."""
-        nonlocal total_frequent_itemsets
-
-        # Combine parts for frequent itemsets with logging
-        combine_parts_with_logging = log_combine_parts(combine_parts)
-        parts_dir = os.path.join(FREQUENT_ITEMSETS_DIR, f"{PARTS_SUBDIR}_{current_level}")
-        combine_parts_with_logging(
-            parts_dir,
-            f"{FREQUENT_ITEMSETS_FILE_NAME_PREFIX}{FILE_NAME_SEPARATOR}{current_level}"
+        # Combine parts for frequent itemsets
+        log_combine_parts(combine_parts)(
+            os.path.join(FREQUENT_ITEMSETS_DIR, f"{PARTS_SUBDIR}_{state.current_level}"),
+            f"{FREQUENT_ITEMSETS_FILE_NAME_PREFIX}{FILE_NAME_SEPARATOR}{state.current_level}"
                 f"{FILE_EXTENSION}",
             FREQUENT_ITEMSETS_DIR,
         )
 
-        # Read and display frequent itemsets results from file
-        frequent_output_file = fi_file_path(current_level)
-        if not is_empty_file(frequent_output_file):
-            with open(frequent_output_file, 'r', encoding="utf-8") as f:
-                frequent_itemsets_results = extract_itemsets_and_supports(f)
-                level_itemsets = len(frequent_itemsets_results)
-                total_frequent_itemsets += level_itemsets
+        # Process results
+        if is_empty_file(state.fi_file_path()):
+            print(f"   {WARNING_INDICATOR} No frequent itemsets found")
+            return 0
 
-            if frequent_itemsets_results:
-                print(format_itemset_summary(frequent_itemsets_results, max_display=5))
-                print(
-                    f"{COMPLETION_INDICATOR} Found {level_itemsets} frequent "
-                    f"{current_level}-itemsets"
-                    )
-            else:
-                print(f"   {WARNING_INDICATOR} No frequent itemsets found")
+        with open(state.fi_file_path(), 'r', encoding="utf-8") as f:
+            frequent_itemsets_results = extract_itemsets_and_supports(f)
+            level_itemsets = len(frequent_itemsets_results)
+            state.total_frequent_itemsets += level_itemsets
+
+        if frequent_itemsets_results:
+            print(format_itemset_summary(frequent_itemsets_results, max_display=5))
+            print(f"{COMPLETION_INDICATOR} Found {level_itemsets} frequent"
+                  f" {state.current_level}-itemsets")
+            log_file_info(state.fi_file_path(), f"Output frequent {state.current_level}-itemsets")
         else:
             print(f"   {WARNING_INDICATOR} No frequent itemsets found")
-            level_itemsets = 0
 
         return level_itemsets
 
-    # Step 5: Check termination conditions
-    def _step_check_termination() -> bool:
+    def check_termination() -> bool:
         """Check if algorithm should terminate due to no frequent itemsets."""
-        if is_empty_file(fi_file_path(current_level)):
-            print(
-                f"{STOP_INDICATOR} No frequent {current_level}-itemsets found. Algorithm complete!"
-                )
+        if is_empty_file(state.fi_file_path()):
+            print(f"{STOP_INDICATOR} No frequent {state.current_level}-itemsets found."
+                  f" Algorithm complete!")
             return True
         return False
 
-    # Step 6: Execute candidate generation phase
-    def _step_execute_candidate_generation_phase() -> bool:
+    def execute_candidate_generation_phase() -> bool:
         """Execute candidate generation based on current level."""
-        if current_level == 1:
-            return _step_execute_2_itemsets_generation()
-        return _step_execute_higher_level_generation()
+        return (
+            execute_2_itemsets_generation() if state.current_level == 1
+            else execute_higher_level_generation()
+            )
 
-    # Step 6a: Generate 2-itemset candidates
-    def _step_execute_2_itemsets_generation() -> bool:
-        """Generate 2-itemset candidates with error handling."""
+    def execute_2_itemsets_generation() -> bool:
+        """Generate 2-itemset candidates with detailed logging."""
         print(f"\n{TASK_INDICATOR} Generating candidate 2-itemsets")
+        log_file_info(state.fi_file_path(), "Input frequent 1-itemsets")
+        print(f"   {STATS_INDICATOR} Generation strategy: "
+              f"Combinatorial pairing of frequent 1-itemsets")
 
-        # Generate 2-itemset candidates with error handling
         success, candidates_generated = execute_candidate_2_itemsets_generation(
-            fi_file_path(current_level),
-            debug_mode,
+            state.fi_file_path(), debug_mode
         )
 
         if not success:
@@ -363,127 +344,116 @@ def frequent_itemsets_mining(
             return False
 
         print(f"{COMPLETION_INDICATOR} Generated {candidates_generated} candidate 2-itemsets")
+        if candidates_generated > 0:
+            log_file_info(state.ci_file_path(2), "Output candidate 2-itemsets")
         return True
 
-    # Step 6b: Generate higher-level candidates
-    def _step_execute_higher_level_generation() -> bool:
-        """Generate candidate itemsets for levels 3+ with error handling."""
-        print(f"\n{TASK_INDICATOR} Generating candidate {current_level + 1}-itemsets")
+    def execute_higher_level_generation() -> bool:
+        """Generate candidate itemsets for levels 3+ with detailed logging."""
+        next_level = state.current_level + 1
+        print(f"\n{TASK_INDICATOR} Generating candidate {next_level}-itemsets")
+        log_file_info(state.fi_file_path(), f"Input frequent {state.current_level}-itemsets")
+        print(f"   {STATS_INDICATOR} Generation strategy: "
+              f"Prefix-based joining with Apriori pruning")
+        print(f"   {STATS_INDICATOR} MapReduce execution mode: {runner_mode}")
 
-        # Generate candidate itemsets with output suppression and error handling
         if not execute_candidate_itemsets_generation(
-            fi_file_path(current_level),
-            current_level + 1,
-            runner_mode,
-            hadoop_args,
-            owner,
-            debug_mode,
+            state.fi_file_path(), next_level, runner_mode,
+            hadoop_args, owner, debug_mode
         ):
             print(
                 f"{STOP_INDICATOR} Error occurred during candidate itemsets generation. Aborting."
                 )
             return False
 
-        # Combine parts for candidate itemsets with logging
-        combine_parts_with_logging = log_combine_parts(combine_parts)
-        parts_dir = os.path.join(CANDIDATE_ITEMSETS_DIR, f"{PARTS_SUBDIR}_{current_level + 1}")
-        combine_parts_with_logging(
-            parts_dir,
-            f"{CANDIDATE_ITEMSETS_FILE_NAME_PREFIX}{FILE_NAME_SEPARATOR}{current_level + 1}"
+        # Combine parts for candidate itemsets
+        log_combine_parts(combine_parts)(
+            os.path.join(CANDIDATE_ITEMSETS_DIR, f"{PARTS_SUBDIR}_{next_level}"),
+            f"{CANDIDATE_ITEMSETS_FILE_NAME_PREFIX}{FILE_NAME_SEPARATOR}{next_level}"
                 f"{FILE_EXTENSION}",
             CANDIDATE_ITEMSETS_DIR,
         )
 
+        # Log output file information
+        if not is_empty_file(state.ci_file_path(next_level)):
+            log_file_info(state.ci_file_path(next_level), f"Output candidate {next_level}-itemsets")
         return True
 
-    # Step 7: Process candidate generation results
-    def _step_process_candidate_results() -> bool:
+    def process_candidate_results() -> bool:
         """Process and validate candidate generation results."""
-        # Count candidate itemsets generated
-        candidate_file = ci_file_path(current_level + 1)
-        if not is_empty_file(candidate_file):
-            with open(candidate_file, 'r', encoding="utf-8") as f:
-                candidate_count = len([line for line in f if line.strip()])
-                if current_level > 1:  # Only show count for higher levels
-                    print(
-                        f"{COMPLETION_INDICATOR} Generated {candidate_count} candidate "
-                        f"{current_level + 1}-itemsets"
-                        )
-        else:
-            print(
-                f"{STOP_INDICATOR} No candidates generated for {current_level + 1}-itemsets. "
-                f"Algorithm complete!"
-                )
+        next_level = state.current_level + 1
+        candidate_file = state.ci_file_path(next_level)
+
+        if is_empty_file(candidate_file):
+            print(f"{STOP_INDICATOR} No candidates generated for {next_level}-itemsets."
+                  f" Algorithm complete!")
             return False
 
+        with open(candidate_file, 'r', encoding="utf-8") as f:
+            candidate_count = len([line for line in f if line.strip()])
+            if state.current_level > 1:  # Only show count for higher levels
+                print(f"{COMPLETION_INDICATOR} Generated {candidate_count} candidate"
+                      f" {next_level}-itemsets")
+
         return True
 
-    # Step 8: Advance to next iteration
-    def _step_advance_iteration() -> None:
-        """Advance algorithm state to next iteration."""
-        nonlocal current_level, current_iteration
-        current_level += 1
-        current_iteration += 1
-
-    # Step 9: Finalize algorithm results
-    def _step_finalize_results(algorithm_start: float) -> None:
+    def finalize_results(algorithm_start: float) -> None:
         """Combine final results and log algorithm completion."""
-        # Final combining step
         print(f"\n{TASK_INDICATOR} Combining all results")
-        combine_parts_with_logging = log_combine_parts(combine_parts)
-        total_lines = combine_parts_with_logging(
+
+        total_lines = log_combine_parts(combine_parts)(
             FREQUENT_ITEMSETS_DIR,
             f"{FREQUENT_ITEMSETS_FILE_NAME_PREFIX}{FILE_EXTENSION}",
+            None,
         )
 
-        # Log final results
-        final_file = os.path.join(
-            FREQUENT_ITEMSETS_DIR,
-            f"{FREQUENT_ITEMSETS_FILE_NAME_PREFIX}{FILE_EXTENSION}"
+        log_file_info(
+            os.path.join(
+                FREQUENT_ITEMSETS_DIR,
+                f"{FREQUENT_ITEMSETS_FILE_NAME_PREFIX}{FILE_EXTENSION}"
+                ),
+            "Final results file"
         )
-        log_file_info(final_file, "Final results file")
 
         # Algorithm completion summary
         duration = time.time() - algorithm_start
         print("\n" + "-" * 100)
         print(f"{COMPLETION_INDICATOR} Apriori Algorithm completed in {duration:.2f}s")
-        print(f"   {STATS_INDICATOR} Total frequent itemsets found: {total_frequent_itemsets}")
-        print(f"   {STATS_INDICATOR} Levels processed: {current_level}")
+        print(f"   {STATS_INDICATOR} Total frequent itemsets found: "
+              f"{state.total_frequent_itemsets}")
+        print(f"   {STATS_INDICATOR} Levels processed: {state.current_level}")
         print(f"   {STATS_INDICATOR} Final result lines: {total_lines}")
 
-    # Main Algorithm Execution Using Step Functions
+    # Main Algorithm Execution
     # ----------------------------------------------------------------------------------
+    algorithm_start = log_operation_start(
+        "Apriori Algorithm",
+        min_support=min_support_count,
+        runner_mode=runner_mode,
+        max_iterations=max_iterations,
+        input_files=list(input_paths)
+    )
 
-    algorithm_start = _step_initialize_algorithm()
+    while state.current_iteration < max_iterations:
+        log_iteration_inputs()
 
-    while current_iteration < max_iterations:
-        # Step 1: Log input files for current iteration
-        _step_log_iteration_inputs()
-
-        # Step 2: Execute frequent itemsets finding
-        if not _step_execute_frequent_itemsets_phase():
+        if not execute_frequent_itemsets_phase():
             return
 
-        # Step 3: Process frequent itemsets results
-        _step_process_frequent_itemsets_results()
+        process_frequent_itemsets_results()
 
-        # Step 4: Check termination conditions
-        if _step_check_termination():
+        if check_termination():
             break
 
-        # Step 5: Execute candidate generation
-        if not _step_execute_candidate_generation_phase():
+        if not execute_candidate_generation_phase():
             return
 
-        # Step 6: Process candidate results
-        if not _step_process_candidate_results():
+        if not process_candidate_results():
             break
 
-        # Step 7: Advance to next iteration
-        _step_advance_iteration()
+        state.advance_iteration()
 
-    # Step 8: Finalize results
-    _step_finalize_results(algorithm_start)
+    finalize_results(algorithm_start)
 
 # Logging and formatting utilities
 # -------------------------------------------------------------------------------------------------
@@ -666,7 +636,9 @@ def format_itemset_summary(itemsets: list[tuple[str, int]], max_display: int = 1
 
     return "\n".join(summary)
 
-def log_combine_parts(func):
+def log_combine_parts(
+        func: Callable[[str, str, str | None], int]
+        ) -> Callable[[str, str, str | None], int]:
     """
     Decorator to log file combination operations.
 
