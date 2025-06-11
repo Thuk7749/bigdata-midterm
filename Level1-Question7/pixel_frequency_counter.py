@@ -13,6 +13,21 @@ from mrjob.protocol import RawValueProtocol, JSONProtocol, RawProtocol
 
 PIXEL_SEPARATOR = " "
 
+MINIMUM_DIGIT_KEY = 10
+
+def pad_number(number: int, min_digits: int = MINIMUM_DIGIT_KEY) -> str:
+    """
+    Pad a number with leading zeros to ensure it has at least `min_digits` digits.
+
+    Args:
+        number (int): The number to pad.
+        min_digits (int): Minimum number of digits the output should have.
+
+    Returns:
+        str: The padded number as a string.
+    """
+    return str(number).zfill(min_digits)
+
 # pylint: disable=abstract-method
 class PixelFrequencyCounter(MRJob):
     """
@@ -78,7 +93,7 @@ class PixelFrequencyCounter(MRJob):
             value (str): A line of text containing space-separated pixel values
 
         Yields:
-            out (tuple[int, int]): (pixel_value, 1) for each valid pixel found
+            out (tuple[str, int]): (padded_pixel_value, 1) for each valid pixel found
         """
         line = value.strip()
         numbers = line.split(PIXEL_SEPARATOR)
@@ -86,7 +101,7 @@ class PixelFrequencyCounter(MRJob):
             try:
                 pixel_value = int(number)
                 self.maximum_value = max(self.maximum_value, pixel_value)
-                yield pixel_value, 1
+                yield pad_number(pixel_value), 1
             except ValueError:
                 # Skip non-numeric values (whitespace, invalid characters)
                 continue
@@ -100,12 +115,12 @@ class PixelFrequencyCounter(MRJob):
         that the final output includes all bins in the histogram range.
 
         Yields:
-            out (tuple[int, int]): (pixel_value, 0) for each value in range [0, max_value]
+            out (tuple[str, int]): (padded_pixel_value, 0) for each value in range [0, max_value]
         """
         for i in range(self.maximum_value + 1):
-            yield i, 0
+            yield pad_number(i), 0
 
-    def combiner(self, key: int, values: Iterable[int]):
+    def combiner(self, key: str, values: Iterable[int]):
         """
         Local aggregation of pixel counts to reduce data transfer.
 
@@ -114,15 +129,15 @@ class PixelFrequencyCounter(MRJob):
         Handles both actual counts (1s) and placeholder zeros.
 
         Args:
-            key (int): Pixel value (integer)
+            key (str): Padded pixel value as string (e.g., "0000000001")
             values (Iterable[int]): Iterator of counts (1s from mapper, 0s from mapper_final)
 
         Yields:
-            out (tuple[int, int]): (pixel_value, local_sum) for this pixel
+            out (tuple[str, int]): (padded_pixel_value, local_sum) for this pixel
         """
         yield key, sum(values)
 
-    def reducer(self, key: int, values: Iterable[int]):
+    def reducer(self, key: str, values: Iterable[int]):
         """
         Aggregate global counts for each pixel value to create complete histogram.
 
@@ -131,13 +146,13 @@ class PixelFrequencyCounter(MRJob):
         that don't appear in the input data but fall within the range [0, N].
 
         Args:
-            key (int): Pixel value (integer)
+            key (str): Padded pixel value as string (e.g., "0000000001")
             values (Iterable[int]): Iterator of counts from all mappers/combiners
 
         Yields:
             tuple[str, str]: (pixel_value, total_count) as tab-separated strings
         """
-        yield str(key), str(sum(values))
+        yield str(int(key)), str(sum(values))
 
 if __name__ == "__main__":
     PixelFrequencyCounter.run()
