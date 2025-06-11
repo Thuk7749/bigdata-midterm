@@ -16,7 +16,19 @@ Basic filtering of phone numbers with STD calls exceeding 60 minutes, including 
 - Output format: tab-separated "phone_number\tduration_minutes"
 
 ## Running Instructions
+
 ```bash
-cd /home/khtn_22120363/midterm/Level1-Question8/tc1
-python ../call_duration_filter.py file11 file12 file13
+# Default runner (inline)
+python Level1-Question8/call_duration_filter.py \
+    Level1-Question8/tc1/file11 Level1-Question8/tc1/file12 Level1-Question8/tc1/file13
+```
+
+```bash
+# Hadoop runner
+python Level1-Question8/call_duration_filter.py \
+    Level1-Question8/tc1/file11 Level1-Question8/tc1/file12 Level1-Question8/tc1/file13 \
+    -r hadoop --output-dir results && \
+    hdfs dfs -copyToLocal results/part-* Level1-Question8/tc1/results.txt && \
+    hdfs dfs -rm -r results && \
+    cat Level1-Question8/tc1/results.txt
 ```

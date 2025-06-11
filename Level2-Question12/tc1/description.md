@@ -16,7 +16,19 @@ Basic FULL OUTER JOIN between FoodPrice and FoodQuantity tables with complete co
 - Output format: space-separated "item_name price quantity"
 
 ## Running Instructions
+
 ```bash
-cd /home/khtn_22120363/midterm/Level2-Question12/tc1
-python ../price_quantity_combiner.py file11 file12 file13
+# Default runner (inline)
+python Level2-Question12/price_quantity_combiner.py \
+    Level2-Question12/tc1/file11 Level2-Question12/tc1/file12 Level2-Question12/tc1/file13
+```
+
+```bash
+# Hadoop runner
+python Level2-Question12/price_quantity_combiner.py \
+    Level2-Question12/tc1/file11 Level2-Question12/tc1/file12 Level2-Question12/tc1/file13 \
+    -r hadoop --output-dir results && \
+    hdfs dfs -copyToLocal results/part-* Level2-Question12/tc1/results.txt && \
+    hdfs dfs -rm -r results && \
+    cat Level2-Question12/tc1/results.txt
 ```

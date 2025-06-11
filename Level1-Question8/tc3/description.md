@@ -15,7 +15,21 @@ Large telecom dataset with numerous phone numbers and varying STD call patterns 
 - Correct identification of heavy STD users (>60 minutes)
 
 ## Running Instructions
+
 ```bash
-cd /home/khtn_22120363/midterm/Level1-Question8/tc3
-python ../call_duration_filter.py file31 file32 file33 file34
+# Default runner (inline)
+python Level1-Question8/call_duration_filter.py \
+    Level1-Question8/tc3/file31 Level1-Question8/tc3/file32 \
+    Level1-Question8/tc3/file33 Level1-Question8/tc3/file34
+```
+
+```bash
+# Hadoop runner
+python Level1-Question8/call_duration_filter.py \
+    Level1-Question8/tc3/file31 Level1-Question8/tc3/file32 \
+    Level1-Question8/tc3/file33 Level1-Question8/tc3/file34 \
+    -r hadoop --output-dir results && \
+    hdfs dfs -copyToLocal results/part-* Level1-Question8/tc3/results.txt && \
+    hdfs dfs -rm -r results && \
+    cat Level1-Question8/tc3/results.txt
 ```

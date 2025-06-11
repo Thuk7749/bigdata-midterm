@@ -15,7 +15,21 @@ Large dataset processing to test MapReduce performance with high data volume.
 - Consistent results across distributed files
 
 ## Running Instructions
+
 ```bash
-cd /home/khtn_22120363/midterm/Level1-Question7/tc3
-python ../pixel_frequency_counter.py file31 file32 file33 file34
+# Default runner (inline)
+python Level1-Question7/pixel_frequency_counter.py \
+    Level1-Question7/tc3/file31 Level1-Question7/tc3/file32 \
+    Level1-Question7/tc3/file33 Level1-Question7/tc3/file34
+```
+
+```bash
+# Hadoop runner
+python Level1-Question7/pixel_frequency_counter.py \
+    Level1-Question7/tc3/file31 Level1-Question7/tc3/file32 \
+    Level1-Question7/tc3/file33 Level1-Question7/tc3/file34 \
+    -r hadoop --output-dir results && \
+    hdfs dfs -copyToLocal results/part-* Level1-Question7/tc3/results.txt && \
+    hdfs dfs -rm -r results && \
+    cat Level1-Question7/tc3/results.txt
 ```

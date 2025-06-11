@@ -15,7 +15,19 @@ Unbalanced table sizes where one table has significantly more entries, testing s
 - Correct handling of heavily unbalanced table distributions
 
 ## Running Instructions
+
 ```bash
-cd /home/khtn_22120363/midterm/Level2-Question12/tc2
-python ../price_quantity_combiner.py file21 file22 file23
+# Default runner (inline)
+python Level2-Question12/price_quantity_combiner.py \
+    Level2-Question12/tc2/file21 Level2-Question12/tc2/file22 Level2-Question12/tc2/file23
+```
+
+```bash
+# Hadoop runner
+python Level2-Question12/price_quantity_combiner.py \
+    Level2-Question12/tc2/file21 Level2-Question12/tc2/file22 Level2-Question12/tc2/file23 \
+    -r hadoop --output-dir results && \
+    hdfs dfs -copyToLocal results/part-* Level2-Question12/tc2/results.txt && \
+    hdfs dfs -rm -r results && \
+    cat Level2-Question12/tc2/results.txt
 ```

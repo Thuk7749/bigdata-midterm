@@ -15,7 +15,21 @@ Large-scale database join with numerous food items distributed across multiple f
 - Correct handling of combiner optimization for data transfer reduction
 
 ## Running Instructions
+
 ```bash
-cd /home/khtn_22120363/midterm/Level2-Question12/tc3
-python ../price_quantity_combiner.py file31 file32 file33 file34
+# Default runner (inline)
+python Level2-Question12/price_quantity_combiner.py \
+    Level2-Question12/tc3/file31 Level2-Question12/tc3/file32 \
+    Level2-Question12/tc3/file33 Level2-Question12/tc3/file34
+```
+
+```bash
+# Hadoop runner
+python Level2-Question12/price_quantity_combiner.py \
+    Level2-Question12/tc3/file31 Level2-Question12/tc3/file32 \
+    Level2-Question12/tc3/file33 Level2-Question12/tc3/file34 \
+    -r hadoop --output-dir results && \
+    hdfs dfs -copyToLocal results/part-* Level2-Question12/tc3/results.txt && \
+    hdfs dfs -rm -r results && \
+    cat Level2-Question12/tc3/results.txt
 ```

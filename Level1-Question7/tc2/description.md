@@ -15,7 +15,19 @@ Histogram computation with sparse pixel distribution where many values have zero
 - Values not in input don't appear in output
 
 ## Running Instructions
+
 ```bash
-cd /home/khtn_22120363/midterm/Level1-Question7/tc2
-python ../pixel_frequency_counter.py file21 file22 file23
+# Default runner (inline)
+python Level1-Question7/pixel_frequency_counter.py \
+    Level1-Question7/tc2/file21 Level1-Question7/tc2/file22 Level1-Question7/tc2/file23
+```
+
+```bash
+# Hadoop runner
+python Level1-Question7/pixel_frequency_counter.py \
+    Level1-Question7/tc2/file21 Level1-Question7/tc2/file22 Level1-Question7/tc2/file23 \
+    -r hadoop --output-dir results && \
+    hdfs dfs -copyToLocal results/part-* Level1-Question7/tc2/results.txt && \
+    hdfs dfs -rm -r results && \
+    cat Level1-Question7/tc2/results.txt
 ```
