@@ -6,6 +6,8 @@ by coordinating candidate generation and support counting phases through
 multiple MapReduce jobs until no new frequent itemsets are found.
 
 Algorithm Flow:
+0. Level 0: Convert decimal support to count using DecimalSupportConverter
+    (if decimal support specified)
 1. Level 1: Count individual items using ItemsetSupportCounter
 2. Level 2: Generate 2-itemset candidates using combinatorial approach
 3. Level 3+: Use CandidateGenerator + ItemsetSupportCounter pipeline
@@ -28,6 +30,7 @@ from io import StringIO
 
 # Import core functions and constants from apriori_core
 from apriori_core import (
+    find_min_support_count,
     find_frequent_itemsets,
     generate_candidate_2_itemsets,
     generate_candidate_itemsets,
@@ -47,6 +50,7 @@ from apriori_core import (
 
 # Constants for argument names
 MIN_SUPPORT_CMD_ARG = "--min-support"
+MIN_SUPPORT_DECIMAL_CMD_ARG = "--min-support-decimal"
 RUNNER_CMD_ARG = "--runner"
 MAX_ITERATIONS_CMD_ARG = "--max-iterations"
 CLEAN_CMD_ARG = "--clean"
@@ -55,7 +59,7 @@ OWNER_CMD_ARG = "--owner"
 DEBUG_CMD_ARG = "--debug"
 
 # Default values for command-line arguments
-DEFAULT_MIN_SUPPORT = 4
+DEFAULT_MIN_SUPPORT_DECIMAL = 0.5
 DEFAULT_RUNNER_MODE = "inline"
 DEFAULT_MAX_ITERATIONS = 100
 
@@ -72,6 +76,58 @@ STATS_INDICATOR = "📊 "        # Statistics and support ranges
 # -------------------------------------------------------------------------------------------------
 
 # pylint: disable=broad-exception-caught,too-many-arguments,too-many-positional-arguments
+def execute_decimal_support_calculation(
+    input_paths: tuple[str, ...],
+    min_support_decimal: float,
+    runner_mode: str,
+    hadoop_args: list[str] | None = None,
+    owner: str | None = None,
+    debug_mode: bool = False,
+) -> int | None:
+    """
+    Execute decimal support to count conversion with comprehensive error handling.
+
+    Args:
+        input_paths: Transaction file paths for processing
+        min_support_decimal: Decimal support threshold (0.0-1.0)
+        runner_mode: MapReduce execution mode
+        hadoop_args: Additional Hadoop arguments
+        owner: Owner for Hadoop jobs
+        debug_mode: Enable detailed error reporting
+
+    Returns:
+        int | None: Calculated support count, or None if error occurred
+    """
+    try:
+        print(f"{TASK_INDICATOR} Converting decimal support to count")
+        print(f"   {STATS_INDICATOR} Decimal support threshold: {min_support_decimal}")
+        print(f"   {SUBTASK_INDICATOR} Counting total transactions...")
+
+        with suppress_mrjob_output(debug_mode):
+            min_support_count = find_min_support_count(
+                *input_paths,
+                min_support_decimal=min_support_decimal,
+                runner_mode=runner_mode,
+                hadoop_args=hadoop_args,
+                owner=owner
+            )
+
+        print(f"   {COMPLETION_INDICATOR} Calculated minimum support count: {min_support_count}")
+        return min_support_count
+
+    except ValueError as e:
+        print(f"{STOP_INDICATOR} Configuration error in decimal support calculation: {e}")
+        print_debug_traceback(debug_mode)
+        return None
+    except (RuntimeError, OSError, IOError) as e:
+        print(f"{STOP_INDICATOR} MapReduce job failed for decimal support calculation: {e}")
+        print_debug_traceback(debug_mode)
+        return None
+    except Exception as e:
+        print(f"{STOP_INDICATOR} Unexpected error in decimal support calculation: {e}")
+        print_debug_traceback(debug_mode)
+        return None
+
 def execute_frequent_itemsets_finding(
     input_paths: tuple[str, ...],
     level: int,
@@ -119,9 +175,7 @@ def execute_frequent_itemsets_finding(
         print(f"{STOP_INDICATOR} Unexpected error in frequent itemsets: {e}")
         print_debug_traceback(debug_mode)
         return False
-# pylint: enable=broad-exception-caught,too-many-arguments,too-many-positional-arguments
 
-# pylint: disable=broad-exception-caught
 def execute_candidate_2_itemsets_generation(
     frequent_itemsets_file: str,
     debug_mode: bool = False,
@@ -151,9 +205,7 @@ def execute_candidate_2_itemsets_generation(
         print(f"{STOP_INDICATOR} Unexpected error in 2-itemset generation: {e}")
         print_debug_traceback(debug_mode)
         return False, 0
-# pylint: enable=broad-exception-caught
 
-# pylint: disable=broad-exception-caught,too-many-arguments,too-many-positional-arguments
 def execute_candidate_itemsets_generation(
     frequent_itemsets_file: str,
     level: int,
@@ -236,7 +288,8 @@ class AprioriState:
 
 def frequent_itemsets_mining(
     *input_paths: str,
-    min_support_count: int = 4,
+    min_support_count: int | None = None,
+    min_support_decimal: float | None = None,
     runner_mode: str = "inline",
     max_iterations: int = 100,
     hadoop_args: list[str] | None = None,
@@ -252,13 +305,46 @@ def frequent_itemsets_mining(
 
     Args:
         *input_paths (str): Paths to transaction files for processing.
-        min_support_count (int): Minimum support threshold (default: 4).
+        min_support_count (int | None): Minimum support threshold (direct count).
+        min_support_decimal (float | None): Minimum support threshold (decimal 0.0-1.0).
         runner_mode (str): MapReduce execution mode (default: "inline").
         max_iterations (int): Maximum algorithm iterations (default: 100).
         hadoop_args (list[str], optional): Additional Hadoop arguments to pass to MRJob.
         owner (str, optional): Owner for Hadoop jobs when using hadoop runner.
         debug_mode (bool): Enable detailed error reporting and MRJob output.
     """
+    # Validate support arguments
+    if min_support_count is not None and min_support_decimal is not None:
+        raise ValueError("Cannot specify both min_support_count and min_support_decimal")
+
+    if min_support_count is None and min_support_decimal is None:
+        min_support_decimal = DEFAULT_MIN_SUPPORT_DECIMAL
+
+    # Log algorithm start before any processing
+    log_kwargs = {
+        'runner_mode': runner_mode,
+        'max_iterations': max_iterations,
+        'input_files': list(input_paths)
+    }
+
+    if min_support_decimal is not None:
+        log_kwargs['min_support_decimal'] = min_support_decimal
+    else:
+        log_kwargs['min_support'] = min_support_count
+
+    algorithm_start = log_operation_start("Apriori Algorithm", **log_kwargs)
+
+    # Calculate support count from decimal if needed
+    if min_support_decimal is not None:
+        min_support_count = execute_decimal_support_calculation(
+            input_paths, min_support_decimal, runner_mode,
+            hadoop_args, owner, debug_mode
+        )
+        if min_support_count is None:
+            return
+
+    # Ensure min_support_count is always an integer at this point
+    assert min_support_count is not None, "min_support_count should not be None after calculation"
     state = AprioriState()
 
     def log_iteration_inputs() -> None:
@@ -355,7 +441,6 @@ def frequent_itemsets_mining(
         log_file_info(state.fi_file_path(), f"Input frequent {state.current_level}-itemsets")
         print(f"   {STATS_INDICATOR} Generation strategy: "
               f"Prefix-based joining with Apriori pruning")
-        print(f"   {STATS_INDICATOR} MapReduce execution mode: {runner_mode}")
 
         if not execute_candidate_itemsets_generation(
             state.fi_file_path(), next_level, runner_mode,
@@ -426,14 +511,6 @@ def frequent_itemsets_mining(
 
     # Main Algorithm Execution
     # ----------------------------------------------------------------------------------
-    algorithm_start = log_operation_start(
-        "Apriori Algorithm",
-        min_support=min_support_count,
-        runner_mode=runner_mode,
-        max_iterations=max_iterations,
-        input_files=list(input_paths)
-    )
-
     while state.current_iteration < max_iterations:
         log_iteration_inputs()
 
@@ -498,6 +575,8 @@ def log_operation_start(operation: str, level: int | None = None, **kwargs) -> f
         # More descriptive parameter formatting
         param_descriptions = {
             'min_support': 'Minimum support threshold',
+            'min_support_decimal': 'Minimum decimal support threshold',
+            'calculated_support': 'Calculated support count',
             'runner_mode': 'MapReduce execution mode',
             'max_iterations': 'Maximum algorithm iterations',
             'input_files': 'Input transaction files'
@@ -702,8 +781,13 @@ def main() -> None:
     parser.add_argument(
         MIN_SUPPORT_CMD_ARG,
         type=int,
-        default=4,
-        help="Minimum support count (default: 4)"
+        help="Minimum support count (cannot be used with --min-support-decimal)"
+    )
+
+    parser.add_argument(
+        MIN_SUPPORT_DECIMAL_CMD_ARG,
+        type=float,
+        help="Minimum support as decimal (0.0-1.0, cannot be used with --min-support)"
     )
 
     parser.add_argument(
@@ -748,9 +832,26 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    # Validate support arguments - exactly one must be provided
+    if args.min_support is not None and args.min_support_decimal is not None:
+        parser.error("Cannot specify both --min-support and --min-support-decimal")
+
+    if args.min_support_decimal is not None:
+        # Validate decimal support range
+        if not 0.0 <= args.min_support_decimal <= 1.0:
+            parser.error("--min-support-decimal must be between 0.0 and 1.0")
+
     if args.debug:
         print("🐛 Debug mode enabled - showing detailed error messages and MRJob output")
         print()
+
+    # Validate input files exist
+    input_files: list[str] = []
+    input_file: str
+    for input_file in args.input_files:
+        if not os.path.exists(input_file):
+            parser.error(f"Input file does not exist: {input_file}")
+        input_files.append(input_file)
 
     # Clean directories if requested
     if args.clean:
@@ -774,18 +875,11 @@ def main() -> None:
         _refresh_directory(FREQUENT_ITEMSETS_DIR)
         _refresh_directory(CANDIDATE_ITEMSETS_DIR)
 
-    # Validate input files exist
-    input_files: list[str] = []
-    input_file: str
-    for input_file in args.input_files:
-        if not os.path.exists(input_file):
-            parser.error(f"Input file does not exist: {input_file}")
-        input_files.append(input_file)
-
-    # Run frequent itemsets mining
+    # Run frequent itemsets mining with appropriate logging
     frequent_itemsets_mining(
         *input_files,
-        min_support_count=args.min_support or DEFAULT_MIN_SUPPORT,
+        min_support_count=args.min_support,
+        min_support_decimal=args.min_support_decimal,
         runner_mode=args.runner or DEFAULT_RUNNER_MODE,
         max_iterations=args.max_iterations or DEFAULT_MAX_ITERATIONS,
         hadoop_args=args.hadoop_args,

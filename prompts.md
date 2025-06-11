@@ -35,7 +35,7 @@ hdfs dfs -copyToLocal ./results/part* ./results && hdfs dfs -rm -r ./results
 ### Test with local runner
 
 ```bash
-cd Level3-Question13 && python main.py trans01 trans02 --min-support 3 --runner local --clean
+cd Level3-Question13 && python main.py trans01 trans02 --min-support-decimal 0.20 --runner local --clean
 ```
 
 ### Test with Hadoop runner
@@ -46,5 +46,5 @@ cd Level3-Question13 && \
     sudo rm -rf frequent-itemsets && \
     mkdir candidate-itemsets && \
     mkdir frequent-itemsets && \
-    python main.py trans01 trans02 --min-support 3 --runner hadoop
+    python main.py trans01 trans02 --min-support-decimal 0.20 --runner hadoop --debug
 ```

@@ -27,6 +27,10 @@ from candidate_generator import (
     CandidateGenerator
 )
 
+from decimal_support_converter import (
+    DecimalSupportConverter,
+    MIN_SUPPORT_DECIMAL_ARG_NAME,
+)
 
 # Constants for file and directory names
 FREQUENT_ITEMSETS_FILE_NAME_PREFIX = "frequent_itemsets"
@@ -37,9 +41,75 @@ FREQUENT_ITEMSETS_DIR = "frequent-itemsets"
 CANDIDATE_ITEMSETS_DIR = "candidate-itemsets"
 PARTS_SUBDIR = "_parts"
 
-
 # Core MapReduce functions
 # -------------------------------------------------------------------------------------------------
+
+def find_min_support_count(
+        *input_paths: str,
+        min_support_decimal: float = 0.5,
+        runner_mode: str = "inline",
+        hadoop_args: list[str] | None = None,
+        owner: str | None = None,
+        ) -> int:
+    """
+    Convert decimal support to actual support count using MapReduce.
+
+    Executes the DecimalSupportConverter MapReduce job to count total transactions
+    and calculate the minimum support count by multiplying decimal support by
+    total transaction count and flooring the result.
+
+    Args:
+        *input_paths (str): Transaction file paths for processing.
+        min_support_decimal (float): Minimum decimal support threshold (default: 0.5).
+        runner_mode (str): MapReduce execution mode (default: "inline").
+        hadoop_args (list[str], optional): Additional Hadoop arguments to pass to MRJob.
+        owner (str, optional): Owner for Hadoop jobs when using hadoop runner.
+
+    Returns:
+        int: Minimum support count calculated as floor(min_support_decimal * total_transactions).
+
+    Raises:
+        ValueError: If input validation fails for paths or decimal support.
+        RuntimeError: If MapReduce job fails or produces no output.
+    """
+    if len(input_paths) == 0:
+        raise ValueError("At least one input path must be provided.")
+    if not 0.0 <= min_support_decimal <= 1.0:
+        raise ValueError("Minimum decimal support must be between 0.0 and 1.0.")
+
+    arguments = list(input_paths)  # Add input paths first
+    arguments.extend([
+        "-r", runner_mode,
+        "--cat-output",
+        MIN_SUPPORT_DECIMAL_ARG_NAME, str(min_support_decimal),
+    ])
+
+    # Add hadoop-specific arguments if provided and using hadoop runner
+    if hadoop_args and runner_mode == "hadoop":
+        # Convert KEY=VALUE pairs to -D KEY=VALUE format
+        hadoop_formatted_args = []
+        for arg in hadoop_args:
+            hadoop_formatted_args.extend(["-D", arg])
+        arguments.extend(hadoop_formatted_args)
+
+    # Add owner argument if provided and using hadoop runner
+    if owner and runner_mode == "hadoop":
+        arguments.extend(["--owner", owner])
+
+    job = DecimalSupportConverter(args=arguments)
+
+    try:
+        with job.make_runner() as runner:
+            runner.run()
+            # Get the output directly from the job results
+            for line in runner.cat_output():
+                line = line.strip()
+                if line:
+                    return int(line)
+    except Exception as e:
+        raise RuntimeError(f"MapReduce job failed: {e}") from e
+
+    raise RuntimeError("MapReduce job produced no output.")
 
 def find_frequent_itemsets(
         *input_paths: str,
@@ -121,7 +191,6 @@ def find_frequent_itemsets(
     with job.make_runner() as runner:
         runner.run()
 
-
 def generate_candidate_2_itemsets(
     *input_paths: str,
     item_separator: str = " ",
@@ -184,7 +253,6 @@ def generate_candidate_2_itemsets(
             candidates_generated += 1
 
     return candidates_generated
-
 
 def generate_candidate_itemsets(
     *input_paths: str,
@@ -251,7 +319,6 @@ def generate_candidate_itemsets(
     with job.make_runner() as runner:
         runner.run()
 
-
 # Utility functions for file and directory management
 # -------------------------------------------------------------------------------------------------
 
@@ -275,7 +342,6 @@ def _refresh_directory(directory: str, guaranteed_no_existence: bool = False) ->
             os.rmdir(directory)
     elif not guaranteed_no_existence:
         os.makedirs(directory)
-
 
 def combine_parts(
     parts_dir: str, output_file: str, output_dir: str | None = None
@@ -313,7 +379,6 @@ def combine_parts(
 
     return lines_written
 
-
 def _process_part_file(part_path: str, outfile: TextIO) -> int:
     """
     Process individual MapReduce part file and write non-empty lines to output.
@@ -333,7 +398,6 @@ def _process_part_file(part_path: str, outfile: TextIO) -> int:
                 outfile.write(line + "\n")
                 lines_written += 1
     return lines_written
-
 
 def extract_itemsets_and_supports(
     buffer: TextIO,
@@ -361,7 +425,6 @@ def extract_itemsets_and_supports(
         support = int(support_str) if support_str.isdigit() else 0
         results.append((itemset_str, support))
     return results
-
 
 def is_empty_file(file_path: str) -> bool:
     """

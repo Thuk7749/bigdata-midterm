@@ -22,19 +22,29 @@ python main.py trans01 trans02 --min-support 3 --runner local --clean
 
 ### Command Options
 ```bash
-python main.py [files...] [--min-support N] [--runner MODE] [--clean] [--debug]
+python main.py [files...] [--min-support N | --min-support-decimal X] [--runner MODE] [--clean] [--debug]
 ```
 
 ### Examples
 
-**Basic:**
+**Basic (count-based support):**
 ```bash
 python main.py trans01 --min-support 3
 ```
 
+**Decimal support (30% of transactions):**
+```bash
+python main.py trans01 --min-support-decimal 0.3
+```
+
+**Default behavior (uses 0.5 decimal support):**
+```bash
+python main.py trans01
+```
+
 **Debug:**
 ```bash
-python main.py trans01 trans02 --min-support 3 --runner local --debug --clean
+python main.py trans01 trans02 --min-support-decimal 0.25 --runner local --debug --clean
 ```
 
 **Hadoop:**
@@ -47,7 +57,7 @@ cd Level3-Question13 && \
     sudo rm -rf frequent-itemsets && \
     mkdir candidate-itemsets && \
     mkdir frequent-itemsets && \
-    python main.py trans01 trans02 --min-support 5 --runner hadoop
+    python main.py trans01 trans02 --min-support-decimal 0.25 --runner hadoop
 ```
 
 ### Output
