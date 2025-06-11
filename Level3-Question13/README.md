@@ -1,74 +1,86 @@
-# Apriori Algorithm Implementation with MapReduce
+# Apriori Algorithm with MapReduce
 
-This directory contains a comprehensively refactored implementation of the Apriori algorithm for frequent itemset mining using MapReduce, featuring advanced logging, state management, and debugging capabilities.
+Frequent itemset mining implementation using MapReduce. Processes transaction files to find itemsets that appear frequently together.
 
-## Overview
+## Files
 
-The implementation consists of four main components with clean architectural separation:
+- `main.py` - Main script with algorithm orchestration
+- `apriori_core.py` - Core MapReduce functions 
+- `itemset_support_counter.py` - Counts itemset support using MapReduce
+- `candidate_generator.py` - Generates candidates with Apriori pruning
+- `trans01`, `trans02`, `trans03` - Sample transaction data
 
-1. **`main.py`** - Orchestrates the complete Apriori algorithm with enhanced logging and debug support
-2. **`apriori_core.py`** - Core MapReduce computation functions (separated for better maintainability)
-3. **`itemset_support_counter.py`** - Counts support for itemsets using MapReduce
-4. **`candidate_generator.py`** - Generates candidate itemsets with Apriori pruning
-
-## Key Features
-
-### 🚀 **Enhanced Algorithm Architecture**
-- **AprioriState Class**: Lightweight state management for algorithm progression
-- **Step-based Execution**: Clean, modular function decomposition
-- **Comprehensive Logging**: Detailed input/output file tracking and generation strategies
-- **Error Handling**: Robust exception handling with optional debug traces
-
-### 🐛 **Advanced Debug Support**
-- **Debug Mode**: `--debug` flag for detailed error reporting and MRJob output visibility
-- **Stack Traces**: Full error context when troubleshooting issues
-- **File Tracking**: Detailed logging of input files, output files, and processing steps
-
-### 📊 **Professional Logging**
-- **Visual Hierarchy**: Consistent icon-based indicators for different message types
-- **Strategy Context**: Clear explanations of algorithm approaches used at each level
-- **Balanced Reporting**: Equal detail for both frequent itemset finding and candidate generation
-- **Progress Tracking**: Real-time feedback on algorithm progression
-
-## Key Files
-
-- **`main.py`** - Main driver with refactored step-based architecture
-- **`apriori_core.py`** - Core MapReduce computation functions
-- **`itemset_support_counter.py`** - MapReduce job for counting itemset support
-- **`candidate_generator.py`** - MapReduce job for generating candidates with subset validation
-- **`trans*`** - Sample transaction files for testing
-
-## How to Run
+## Usage
 
 ```bash
-# Basic usage with minimum support of 3
-python main.py trans01 --min-support 3
-
-# Multiple files with different runner mode
-python main.py trans01 trans02 --min-support 5 --runner local
-
-# Clean previous outputs and limit iterations
-python main.py trans01 --min-support 2 --clean --max-iterations 5
+python main.py [transaction_files...] [options]
 ```
 
-## Algorithm Flow
+### Command Line Arguments
 
-1. **Level 1**: Count individual item frequencies
-2. **Level 2**: Generate 2-itemset candidates using combinatorial approach
-3. **Level 3+**: Use MapReduce candidate generation with:
-   - Prefix-based generation
-   - Subset validation
-   - Apriori principle pruning
+**Required:**
+- `transaction_files` - One or more transaction files (e.g., `trans01 trans02`)
+
+**Optional:**
+- `--min-support N` - Minimum support threshold (default: 4)
+- `--runner MODE` - Execution mode: `inline`, `local`, `hadoop` (default: inline)
+- `--max-iterations N` - Maximum iterations (default: 100)
+- `--clean` - Remove previous output directories
+- `--debug` - Show detailed errors and MRJob output
+- `--hadoop-args "KEY=VALUE"` - Additional Hadoop arguments (for hadoop runner)
+- `--owner NAME` - Job owner (for hadoop runner)
+
+### Examples
+
+```bash
+# Basic usage
+python main.py trans01 --min-support 3
+
+# Multiple files with local runner
+python main.py trans01 trans02 --min-support 5 --runner local
+
+# Debug mode with cleanup
+python main.py trans01 --min-support 2 --debug --clean
+
+# Hadoop runner
+python main.py trans01 trans02 --min-support 3 --runner hadoop --owner myuser
+```
+
+## How It Works
+
+### Algorithm Flow
+1. **Level 1:** Count individual items using ItemsetSupportCounter
+2. **Level 2:** Generate 2-itemset candidates (combinatorial, no MapReduce)
+3. **Level 3+:** Use CandidateGenerator → ItemsetSupportCounter pipeline
+4. **Repeat:** Until no new frequent itemsets found
+
+### MapReduce Execution
+- **ItemsetSupportCounter:** Maps transactions → counts itemset occurrences → reduces to support counts
+- **CandidateGenerator:** Maps frequent itemsets → generates candidates → reduces with Apriori pruning
+- **main.py:** Orchestrates the jobs, combines output parts, manages iteration flow
 
 ## Output
 
-- `frequent-itemsets/` - Contains frequent itemsets by level
-- `candidate-itemsets/` - Contains generated candidates by level
-- `frequent_itemsets.txt` - Final consolidated results
+- `frequent-itemsets/frequent_itemsets_N.txt` - Frequent itemsets by level
+- `candidate-itemsets/candidate_itemsets_N.txt` - Generated candidates by level  
+- `frequent-itemsets/frequent_itemsets.txt` - Final consolidated results
 
-## Technical Notes
+## Input Format
 
-- Uses tab-separated format for itemset-support pairs
-- Implements proper Apriori pruning for efficiency
-- Supports multiple MapReduce execution modes (inline, local, hadoop)
-- Handles edge cases and malformed input gracefully
+Transaction files should have format:
+```
+transaction_id<TAB>item1 item2 item3 ...
+```
+
+Example:
+```
+t001	bread milk eggs
+t002	bread butter
+t003	milk eggs butter
+```
+
+## Notes
+
+- Uses tab-separated output format (itemset<TAB>support_count)
+- Supports inline, local, and hadoop MapReduce modes
+- Debug mode shows full error traces and MRJob output
